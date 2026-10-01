@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contest Room Monitor</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/styles.css">
+<style>
+  .wrap { max-width: 68rem; margin: 0 auto; padding: 1.5rem 16px 4rem; display: grid; gap: 1.5rem; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .8rem; }
+  .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: .8rem 1rem; }
+  .tile b { display: block; font-family: var(--mono); font-size: 1.6rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .tile span { font-size: .8rem; color: var(--muted); }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 1rem; display: grid; gap: .8rem; min-width: 0; }
+  .panel h2 { margin: 0; font-size: 1rem; }
+  .tw { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: .85rem; }
+  th, td { text-align: left; padding: .35rem .6rem .35rem 0; border-top: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; }
+  .mono { font-family: var(--mono); font-size: .8rem; }
+  pre { white-space: pre-wrap; margin: 0; font-family: var(--mono); font-size: .8rem; background: var(--bg); padding: .5rem; border-radius: 5px; }
+  input.t { padding: .5rem .7rem; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); min-width: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: .4rem; }
+  .chip { font-size: .8rem; padding: .15rem .55rem; border-radius: 99px; background: var(--accent-soft); }
+  .chip.hot { background: var(--crit-soft); color: var(--red); }
+</style>
+</head>
+<body>
+<div class="flagline"></div>
+<div class="wrap">
+  <div class="row" style="justify-content:space-between">
+    <div class="brand"><span class="dot"></span>The Contest Room · Monitor</div>
+    <form id="kf" class="row"><input class="t" id="key" type="password" placeholder="Admin key" autocomplete="current-password"><button class="btn">Unlock</button></form>
+  </div>
+  <p class="err" id="err"></p>
+  <div id="body" hidden>
+    <div class="tiles" id="tiles"></div>
+    <p class="fine" id="when"></p>
+    <div class="panel">
+      <h2>Look up a student</h2>
+      <form id="sf" class="row"><input class="t" id="code" placeholder="KIO-XXXX-XXXX"><button class="btn">Look up</button></form>
+      <div id="student"></div>
+    </div>
+    <div class="panel">
+      <div class="row" style="justify-content:space-between"><h2>More than one device, IP or browser</h2><button class="btn" id="devBtn" type="button">Load</button></div>
+      <div class="tw" id="devices"></div>
+    </div>
+  </div>
+</div>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  let key = ''; try { key = sessionStorage.getItem('crk') || ''; } catch {}
+  const fmt = t => t ? new Date(t).toLocaleString('en-GB', { timeZone: 'Africa/Nairobi' }) : '—';
+  async function get(q) {
+    const r = await fetch('/api/admin?' + q, { headers: { 'x-admin-key': key } });
+    const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Error'); return j;
+  }
+  async function stats() {
+    try {
+      const s = await get('action=stats');
+      $('err').textContent = ''; $('body').hidden = false;
+      const tiles = [['Students', s.students], ['Joined', s.joined], ['Active (3 min)', s.active], ['Submitted', s.submitted], ['Device switches', s.device_switches], ['Log batches', s.log_batches], ['Database', s.db_size]];
+      $('tiles').innerHTML = tiles.map(([l, v]) => `<div class="tile"><b>${esc(v)}</b><span>${l}</span></div>`).join('');
+      $('when').textContent = `Contest ${fmt(s.start)} to ${fmt(s.end)} EAT · updated ${fmt(s.serverNow)} · refreshes every 30 s`;
+    } catch (e) { $('err').textContent = e.message; $('body').hidden = true; }
+  }
+  const NAMES = { k: 'keys', in: 'large inserts', p: 'pastes (own)', pb: 'pastes blocked', cp: 'copies', bl: 'blurs', fo: 'focus', hid: 'tab hidden', vis: 'tab visible', fsx: 'left full screen', fse: 'full screen', go: 'navigations', mc: 'MCQ picks', fl: 'flags', ctx: 'right-clicks', kb: 'shortcuts', rz: 'resizes', on: 'online', off: 'offline', ld: 'page loads', sub: 'submit' };
+  const HOT = new Set(['pb', 'hid', 'bl', 'fsx', 'in', 'cp', 'kb', 'off']);
+  $('kf').onsubmit = e => { e.preventDefault(); key = $('key').value; try { sessionStorage.setItem('crk', key); } catch {} stats(); };
+  $('sf').onsubmit = async e => {
+    e.preventDefault();
+    try {
+      const d = await get('action=student&code=' + encodeURIComponent($('code').value));
+      const x = d.session || {};
+      const t = ms => { const s = Math.round(ms / 1000); return `${s < 0 ? '-' : ''}${Math.floor(Math.abs(s) / 60)}:${String(Math.abs(s) % 60).padStart(2, '0')}`; };
+      $('student').innerHTML = `
+        <p><b>${esc(d.student.name)}</b> · ${esc(d.student.school || '')} · ${esc(d.student.county || '')} · <span class="mono">${esc(d.student.code)}</span></p>
+        <p class="fine">First join ${fmt(x.first_join_at)} · last sync ${fmt(x.last_sync_at)} · submitted ${fmt(x.submitted_at)} · ${d.batches} batches (${d.stale} from a replaced device)</p>
+        <div class="chips">${Object.entries(d.counts).map(([k, v]) => `<span class="chip ${HOT.has(k) ? 'hot' : ''}">${esc(NAMES[k] || k)}: ${v}</span>`).join('')}</div>
+        <div class="tw"><table><tr><th>Joined</th><th>Kind</th><th>IP</th><th>Browser</th></tr>${d.joins.map(j => `<tr><td>${fmt(j.at)}</td><td>${esc(j.kind)}</td><td class="mono">${esc(j.ip)}</td><td class="fine">${esc(j.ua)}</td></tr>`).join('')}</table></div>
+        <details><summary>Answers</summary><div class="tw"><table>${Object.entries(x.answers || {}).sort((a, b) => parseInt(a[0]) - parseInt(b[0]) || a[0].localeCompare(b[0])).map(([k, v]) => `<tr><th>${esc(k)}</th><td><pre>${esc(v)}</pre></td></tr>`).join('')}</table></div></details>
+        <details><summary>Recent activity (keystrokes omitted, time since start)</summary><div class="tw"><table>${d.recent.slice().reverse().map(r => `<tr><td class="mono">${t(r[0])}</td><td>${esc(NAMES[r[1]] || r[1])}</td><td class="mono">${esc(r.slice(2).filter(Boolean).join(' · '))}</td></tr>`).join('')}</table></div></details>`;
+    } catch (e) { $('student').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  };
+  $('devBtn').onclick = async () => {
+    try {
+      const d = await get('action=devices');
+      $('devices').innerHTML = d.rows.length ? `<table><tr><th>Code</th><th>Name</th><th>School</th><th>Joins</th><th>IPs</th><th>Browsers</th></tr>${d.rows.map(r => `<tr><td class="mono">${esc(r.code)}</td><td>${esc(r.name)}</td><td>${esc(r.school)}</td><td>${r.join_count}</td><td>${r.ips}</td><td>${r.browsers}</td></tr>`).join('')}</table>` : '<p class="fine">None so far.</p>';
+    } catch (e) { $('devices').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  };
+  if (key) stats();
+  setInterval(() => { if (key && !document.hidden) stats(); }, 30000);
+})();
+</script>
+</body>
+</html>

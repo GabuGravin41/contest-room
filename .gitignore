@@ -1,0 +1,6 @@
+node_modules
+.env
+out
+*.csv
+!sample-students.csv
+.vercel
