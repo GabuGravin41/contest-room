@@ -64,7 +64,9 @@ code { font-family: var(--mono); font-size: .92em; background: var(--accent-soft
 .card.wide { max-width: 40rem; }
 .card-body { padding: 2rem 2rem 1.75rem; display: grid; gap: 1.1rem; }
 .brand { display: flex; align-items: center; gap: .55rem; font-weight: 600; letter-spacing: .01em; }
-.brand .dot { width: 10px; height: 10px; border-radius: 2px; background: var(--accent); box-shadow: -4px 0 0 var(--red), -8px 0 0 var(--ink); margin-left: 8px; }
+.brand .dot { /* flag-inspired mark: three equal vertical bars, black / red / green, separated by white */
+  flex: none; width: 19px; height: 14px; border-radius: 2px;
+  background: linear-gradient(to right, #1B1B1B 0 5px, #FFFFFF 5px 7px, #BB1E10 7px 12px, #FFFFFF 12px 14px, #006B3F 14px 19px); }
 .eyebrow { font-size: .75rem; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); font-weight: 600; }
 .gate h1 { font-family: var(--serif); font-weight: 600; font-size: 1.75rem; line-height: 1.2; margin: 0; text-wrap: balance; }
 .gate .sub { margin: -.6rem 0 0; color: var(--muted); }
