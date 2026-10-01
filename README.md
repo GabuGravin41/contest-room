@@ -104,18 +104,51 @@ npm run dev            # http://localhost:3000  and  http://localhost:3000/admin
 - **Rehearse.** Run a real rehearsal with 50–100 people on phones and laptops a few days before, so problems show up while there is still time to fix them.
 - **Region.** `vercel.json` pins functions to Frankfurt (`fra1`). Keep the Neon database in Frankfurt too, so every save is a short hop.
 
-## Editing the paper
+## Editing the paper (write LaTeX, as usual)
 
-The paper lives in `lib/paper.js`. It is only sent to browsers during the contest window. Problem text accepts light HTML and inline maths between `$…$` (`a_i`, `10^5`, `\le`, `\ne`, `\gcd`, `\oplus`, `\texttt{…}`). Write a literal dollar sign as `&#36;`. The Section A answer key is in `lib/key.js`; only the export script reads it, and it is never sent to browsers.
+The paper source is **`paper/round1.tex`**, written in the same KIO LaTeX template as the printed paper. On every deploy, Vercel converts it into the online paper (`lib/paper.js`) and reads the Section A answer key from the marking-scheme table inside `\ifanswers … \fi` (`lib/key.js`).
+
+To change a problem:
+1. Edit `paper/round1.tex`. You can do this on GitHub (open the file, click the pencil) or locally.
+2. To check it locally first, run `npm run paper`. It prints the problem count, total marks and whether the answer key was found.
+3. Commit and push. Vercel redeploys in about a minute.
+4. In `/admin`, click **Preview the paper as a student** to see exactly what students will see.
+
+The converter understands:
+- sections: `\section*{Section A \quad Title \hfill\normalsize (notes)}`
+- problems: `\begin{problem}{marks}`
+- multiple choice: `\mcq{..}{..}{..}{..}{..}` or `mcqlong`
+- written answers: `parts`, with `\item … \hfill [marks]`; each part gets its own answer box
+- algorithm problems: `\textbf{Constraints.}`, `example` and `\task`
+- text: `enumerate`, `\textbf`, `\emph`, `\texttt`, and inline maths `$…$`
+
+Print-only material inside `\ifanswers\else … \fi` (name fields, the answer grid) is left out of the online version. Anything it doesn't recognise is listed as a note when it runs. The online instructions page comes from `paper/instructions.txt`.
+
+## Logos and title
+
+Put logo files (PNG or SVG) in `public/logos/` and list them in **`public/branding.js`**. That file also sets the event name, round, and the line shown on the code-entry screen. Logos appear on the entry, waiting and finished screens, and small in the exam header.
+
+## Demo mode (for showing CEMASTEA or the team)
+
+Set `CONTEST_MODE=practice` in Vercel and redeploy. In practice mode the start time is ignored: each code opens immediately and gets its own 2.5-hour clock from its first entry, with real saving and logging. Make a few codes with `npm run students -- --blank 10`, or with **Issue a new code** in `/admin`, and hand them out.
+
+**Set `CONTEST_MODE=live` (or delete it) and redeploy before the real contest.** `/admin` shows a red badge while practice mode is on.
+
+## Contest-day precautions
+
+- **Find a student** (`/admin`): search by name, school, county, candidate number or code to recover a lost code.
+- **Issue a new code** (`/admin`): registers a student on the spot. The code works immediately.
+- **If the server can't be reached for 2 minutes:** students see a bar with **Save a copy of my answers**. It downloads a text file of all their answers, named with their code. If `FALLBACK_EMAIL` is set, they are told to email it there. When the connection returns, saving resumes automatically.
+- **Last resort:** keep the PDF paper ready to send out, with the same email address for answers.
 
 ## Files
 
 ```
 api/join.js     code check, waiting room, session token, paper delivery
 api/sync.js     autosave + activity log (idempotent; stale-device and late flags)
-api/admin.js    read-only monitor API (x-admin-key)
-lib/paper.js    the paper
-lib/key.js      Section A key (export only)
+api/admin.js    monitor, search, issue codes, preview, backups (x-admin-key)
+paper/round1.tex   the paper (LaTeX); lib/paper.js and lib/key.js are generated from it
+public/branding.js event name, round, logos
 lib/server.js   config, DB pool, helpers
 public/         index.html, app.js, styles.css, admin.html
 scripts/        schema.sql, setup-db.js, add-students.js, export.js, build-demo.js

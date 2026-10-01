@@ -6,7 +6,7 @@
 import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { db, config } from '../lib/server.js';
 import { ANSWER_KEYS } from '../lib/paper.js';
-import { MCQ_KEY, MCQ_MARKS } from '../lib/key.js';
+import { MCQ_KEY, MCQ_POINTS } from '../lib/key.js';
 import { toCSV } from './csv.js';
 
 const sql = db();
@@ -19,7 +19,7 @@ const rows = await sql`select s.*, x.first_join_at, x.last_sync_at, x.submitted_
   from students s left join sessions x using (code) order by s.school, s.name`;
 const answers = rows.map(r => {
   const a = r.answers || {};
-  const score = Object.entries(MCQ_KEY).reduce((t, [q, k]) => t + (a[q] === k ? MCQ_MARKS : 0), 0);
+  const score = Object.entries(MCQ_KEY).reduce((t, [q, k]) => t + (a[q] === k ? (MCQ_POINTS[q] ?? 2) : 0), 0);
   return { code: r.code, name: r.name, school: r.school, county: r.county, candidate_no: r.candidate_no,
     first_join: iso(r.first_join_at), last_sync: iso(r.last_sync_at), submitted: iso(r.submitted_at),
     joins: r.join_count ?? 0, section_a_score: r.first_join_at ? score : '', ...Object.fromEntries(keys.map(k => [k, a[k] ?? ''])) };

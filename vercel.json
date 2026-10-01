@@ -1,15 +1,38 @@
 {
   "framework": null,
-  "buildCommand": "",
+  "buildCommand": "node scripts/tex-to-paper.js paper/round1.tex",
   "outputDirectory": "public",
   "cleanUrls": true,
-  "regions": ["fra1"],
-  "functions": { "api/*.js": { "maxDuration": 15 } },
+  "regions": [
+    "fra1"
+  ],
+  "functions": {
+    "api/*.js": {
+      "maxDuration": 15
+    }
+  },
   "headers": [
-    { "source": "/api/(.*)", "headers": [{ "key": "Cache-Control", "value": "no-store" }] },
-    { "source": "/(.*)", "headers": [
-      { "key": "X-Frame-Options", "value": "DENY" },
-      { "key": "Referrer-Policy", "value": "no-referrer" }
-    ] }
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "no-referrer"
+        }
+      ]
+    }
   ]
 }

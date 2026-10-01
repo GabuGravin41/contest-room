@@ -2,13 +2,16 @@
   "name": "contest-room",
   "private": true,
   "type": "module",
-  "engines": { "node": "22.x" },
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "node --env-file=.env dev-server.js",
     "db:setup": "node --env-file=.env scripts/setup-db.js",
     "students": "node --env-file=.env scripts/add-students.js",
     "export": "node --env-file=.env scripts/export.js",
-    "demo": "node scripts/build-demo.js"
+    "demo": "node scripts/build-demo.js",
+    "paper": "node scripts/tex-to-paper.js paper/round1.tex"
   },
   "dependencies": {
     "postgres": "3.4.9"

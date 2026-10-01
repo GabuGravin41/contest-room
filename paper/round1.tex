@@ -1,0 +1,501 @@
+\documentclass[11pt,a4paper]{article}
+
+% ------------------------------------------------------------------
+%  Kenya Informatics Olympiad -- Round 1
+%  Set \answerstrue (or compile with \def\withanswers{}) to print
+%  the marking scheme after the paper.
+% ------------------------------------------------------------------
+\newif\ifanswers
+\answersfalse
+\ifdefined\withanswers \answerstrue \fi
+
+\usepackage[margin=2.2cm, headheight=14pt]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\usepackage{titlesec}
+\usepackage[most]{tcolorbox}
+\usepackage[hidelinks]{hyperref}
+
+% ---------- colours ----------
+\definecolor{kioblack}{HTML}{1B1B1B}
+\definecolor{kiored}{HTML}{B22222}
+\definecolor{kiogreen}{HTML}{006B3F}
+\definecolor{kiogrey}{HTML}{F2F2F2}
+
+% ---------- header / footer ----------
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\textsc{Kenya Informatics Olympiad 2026}}
+\fancyhead[R]{\small Round 1\ifanswers\ --- Marking Scheme\fi}
+\fancyfoot[C]{\small Page \thepage\ of \pageref{LastPage}}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% ---------- section style ----------
+\titleformat{\section}
+  {\large\bfseries\color{kiogreen}}{}{0pt}
+  {}[\vspace{-0.6em}\color{kiogreen}\rule{\linewidth}{0.8pt}]
+\titlespacing*{\section}{0pt}{1.6em}{0.9em}
+
+% ---------- problems: numbered 1, 2, 3, ... with no titles ----------
+\newcounter{prob}
+\newenvironment{problem}[1]% #1 = marks
+  {\refstepcounter{prob}\par\medskip
+   \noindent{\bfseries\large \theprob.}\hfill\textit{[#1 marks]}\par
+   \nopagebreak\smallskip}
+  {\par\medskip}
+
+\newcommand{\answerline}[1][Answer]{%
+  \par\nopagebreak\smallskip\nopagebreak\noindent\textbf{#1:}\ \hrulefill\par}
+
+\makeatletter
+\newenvironment{parts}
+  {\begin{enumerate}[label=(\alph*), leftmargin=2em, itemsep=0.35em]}
+  {\@endparpenalty\@M\end{enumerate}}% keep the answer line with the parts
+\makeatother
+
+% ---------- multiple-choice options ----------
+\newcommand{\mcq}[5]{%
+  \par\nopagebreak\smallskip\noindent
+  \begin{tabular*}{\linewidth}{@{\extracolsep{\fill}}lllll@{}}
+  \textbf{(A)} #1 & \textbf{(B)} #2 & \textbf{(C)} #3 & \textbf{(D)} #4 & \textbf{(E)} #5
+  \end{tabular*}\par}
+\newenvironment{mcqlong}
+  {\begin{enumerate}[label=\textbf{(\Alph*)}, leftmargin=2.4em, itemsep=0pt]}
+  {\end{enumerate}}
+
+% ---------- Section C boxes ----------
+\newtcolorbox{example}{colback=white, colframe=kiogreen!60, boxrule=0.4pt,
+  arc=2pt, left=5pt, right=5pt, top=3pt, bottom=3pt,
+  title=\textbf{Example}, fonttitle=\small\bfseries, coltitle=white,
+  colbacktitle=kiogreen!70}
+\newcommand{\task}{\par\smallskip\noindent\textbf{Your task.} Describe an
+  efficient algorithm for this problem. Explain the key idea, justify why it
+  is correct, and state its time complexity. You do not need to write code.\par}
+
+% ---------- solution environment ----------
+\newtcolorbox{solution}[1][]{
+  enhanced, breakable, colback=kiogrey, colframe=kiogreen,
+  boxrule=0.5pt, arc=2pt, left=6pt, right=6pt, top=4pt, bottom=4pt,
+  fonttitle=\bfseries, title={#1}}
+
+\begin{document}
+
+% ==================================================================
+%  COVER
+% ==================================================================
+\begin{center}
+  {\color{kioblack}\rule{\linewidth}{3pt}}\\[-2.2pt]
+  {\color{kiored}\rule{\linewidth}{3pt}}\\[-2.2pt]
+  {\color{kiogreen}\rule{\linewidth}{3pt}}\\[1.2em]
+  {\LARGE\bfseries Kenya Informatics Olympiad 2026}\\[0.5em]
+  {\Large Round 1 \ifanswers --- Marking Scheme\else --- Problem Paper\fi}\\[1em]
+  {\color{kiogreen}\rule{\linewidth}{3pt}}\\[-2.2pt]
+  {\color{kiored}\rule{\linewidth}{3pt}}\\[-2.2pt]
+  {\color{kioblack}\rule{\linewidth}{3pt}}
+\end{center}
+
+\ifanswers\else
+\vspace{0.6em}
+\noindent
+\begin{tabular}{@{}p{0.48\linewidth}p{0.48\linewidth}@{}}
+Name: \hrulefill & School: \hrulefill \\[0.8em]
+County: \hrulefill & Candidate No.: \hrulefill
+\end{tabular}
+\fi
+
+\subsection*{Instructions}
+\begin{enumerate}[leftmargin=2em, itemsep=0.2em]
+  \item Time allowed: \textbf{3 hours}.
+  \item The paper has \textbf{20 problems} in three sections, worth
+        \textbf{100 marks} in total.
+  \item \textbf{Section A} (Problems 1--7) is multiple choice. Each problem
+        has exactly one correct option. Write its letter in the answer grid.
+        Wrong answers do not lose marks.
+  \item \textbf{Section B} (Problems 8--14) needs written answers. Show your
+        working in the answer booklet; working earns partial credit.
+  \item \textbf{Section C} (Problems 15--20) asks you to \emph{describe
+        algorithms}. Write clear steps or pseudocode, explain why your method
+        is correct, and give its running time. You do not need to write code
+        in any particular programming language.
+  \item Calculators and electronic devices are \textbf{not} allowed.
+\end{enumerate}
+
+\begin{tcolorbox}[colback=kiogrey, colframe=kioblack, boxrule=0.5pt,
+                  arc=2pt, title=\textbf{Old British money (Sections A and B)},
+                  fonttitle=\bfseries]
+Several problems use pre-decimal British currency.
+\begin{center}
+\begin{tabular}{@{}ll@{\qquad}ll@{}}
+\toprule
+1 pound (\pounds1) & = 20 shillings (20s) & 1 crown & = 5s \\
+1 shilling (1s)    & = 12 pence (12d)     & 1 half-crown & = 2s\,6d \\
+1 penny (1d)       & = 4 farthings        & 1 florin & = 2s \\
+1 half-sovereign   & = 10s                & 1 double florin & = 4s \\
+\bottomrule
+\end{tabular}
+\end{center}
+So, for example, 8s\,4d $= 8\times 12 + 4 = 100$ pence.
+\end{tcolorbox}
+
+% ==================================================================
+\section*{Section A \quad Multiple Choice \hfill\normalsize (7 problems, 2 marks each)}
+% ==================================================================
+
+\ifanswers\else
+\noindent\textbf{Answer grid.} Write one letter (A--E) in each box.
+\begin{center}
+\renewcommand{\arraystretch}{1.8}
+\begin{tabular}{|c|*{7}{>{\centering\arraybackslash}p{1.1cm}|}}
+\hline
+\textbf{Problem} & 1 & 2 & 3 & 4 & 5 & 6 & 7 \\ \hline
+\textbf{Answer}  &   &   &   &   &   &   &   \\ \hline
+\end{tabular}
+\end{center}
+\fi
+
+\begin{problem}{2}
+A gentleman hands over a crown at the post office. He asks for some
+twopenny stamps, six times as many penny stamps, and the rest of the
+money in twopence-halfpenny stamps. How many stamps of each kind
+(twopenny, penny, twopence-halfpenny) does he receive?
+\mcq{4, 24, 11}{5, 30, 8}{3, 18, 14}{6, 36, 5}{2, 12, 17}
+\end{problem}
+
+\begin{problem}{2}
+A gentleman meets three people asking for help, one after another. To the
+first he gives 1d more than half the money in his pocket; to the second,
+2d more than half of what is left; to the third, 3d more than half of what
+is then left. He finishes with exactly 1d. How much did he start with?
+\mcq{2s\,6d}{3s\,0d}{3s\,6d}{4s\,2d}{5s\,0d}
+\end{problem}
+
+\begin{problem}{2}
+A group of cyclists agree to split a bill of \pounds4 equally. By the time
+the bill is paid, two of them have left, so each cyclist who remains pays
+2s more than his original share. How many cyclists were there at the start?
+\mcq{5}{6}{8}{10}{12}
+\end{problem}
+
+\begin{problem}{2}
+A man buys exactly 100 eggs of three qualities, costing 5d, 1d and
+$\tfrac12$d each. He buys at least one egg of every quality, pays exactly
+8s\,4d, and buys the same number of eggs of two of the qualities. How many
+eggs does he buy at 5d, 1d and $\tfrac12$d respectively?
+\mcq{10, 10, 80}{8, 20, 72}{12, 12, 76}{5, 5, 90}{20, 20, 60}
+\end{problem}
+
+\begin{problem}{2}
+A grocer weighs out two 1-pound parcels of sugar per minute. A draper cuts
+three 1-yard lengths of cloth per minute. Each must produce 48 items.
+Customers interrupt them for 9 minutes in total between the two of them,
+and the draper is interrupted for 17 times as long as the grocer. Which
+statement is true?
+\begin{mcqlong}
+  \item The grocer finishes 1 minute before the draper.
+  \item The grocer finishes 8 minutes before the draper.
+  \item The draper finishes 1 minute before the grocer.
+  \item The draper finishes $8\tfrac12$ minutes before the grocer.
+  \item They finish at exactly the same time.
+\end{mcqlong}
+\end{problem}
+
+\begin{problem}{2}
+Hodge, Jakes and Durrant meet at a cattle market.
+Hodge says to Jakes: ``I'll give you six of my pigs for one of your horses,
+and then you'll have twice as many animals as I have.''
+Durrant says to Hodge: ``I'll give you fourteen of my sheep for a horse,
+and then you'll have three times as many animals as I.''
+Jakes says to Durrant: ``I'll give you four cows for a horse, and then
+you'll have six times as many animals as I have.''
+Each offer is considered on its own, starting from the original herds.
+How many animals did Hodge, Jakes and Durrant bring?
+\mcq{7, 11, 21}{9, 3, 18}{11, 7, 21}{13, 11, 23}{21, 7, 11}
+\end{problem}
+
+\begin{problem}{2}
+A man leaves instructions that exactly 55s be shared out once a year among
+the poor of his parish: 18d to each woman and a half-crown to each man.
+Every year at least one man and at least one woman must receive money, and
+no two years may use the same numbers of men and women. For how many years
+can the charity run?
+\mcq{6}{7}{8}{11}{22}
+\end{problem}
+
+% ==================================================================
+\section*{Section B \quad Written Answers \hfill\normalsize (7 problems, 36 marks)}
+% ==================================================================
+
+\begin{problem}{5}
+Four brothers, John, William, Charles and Thomas, each have a money-box. If
+John had 2s more, William 2s less, Charles twice as much and Thomas half as
+much, all four would have the same amount.
+
+Together the boxes hold 45s in exactly \textbf{six coins}. The coins
+available are the sovereign (20s), half-sovereign (10s), crown (5s), double
+florin (4s), half-crown (2s\,6d), florin (2s), shilling, sixpence and
+threepence.
+\begin{parts}
+  \item How much money is in each box? \hfill [2]
+  \item Which coins are in each box? \hfill [3]
+\end{parts}
+\answerline
+\end{problem}
+
+\begin{problem}{6}
+Hiram B.\ Judkins has five droves of animals, all the same size, made up of
+oxen, pigs and sheep (at least one of each kind overall). He sells every
+animal to eight dealers, who each buy the same number of animals. He is paid
+\$17 per ox, \$4 per pig and \$2 per sheep, and receives exactly \$301.
+\begin{parts}
+  \item What is the greatest number of animals he could have had? \hfill [2]
+  \item Give \emph{every} possible combination of oxen, pigs and sheep for
+        that total. \hfill [4]
+\end{parts}
+\answerline
+\end{problem}
+
+\begin{problem}{5}
+An Englishman in New York buys goods costing 34 cents. All he has is a
+dollar (100\,c), a three-cent piece and a two-cent piece. The shopkeeper has
+only a half-dollar (50\,c) and a quarter-dollar (25\,c). Another customer
+offers to help and puts down two dimes (10\,c each), a five-cent piece, a
+two-cent piece and a one-cent piece.
+
+The coins can be swapped around so that the Englishman pays exactly 34\,c
+and the helpful customer ends up with exactly the money he started with.
+\begin{parts}
+  \item How much money does each of the three people hold once the deal is
+        done? \hfill [1]
+  \item Which coins does each person end up with? \hfill [4]
+\end{parts}
+\answerline
+\end{problem}
+
+\begin{problem}{5}
+\begin{parts}
+  \item A coin lies flat on a table. What is the greatest number of coins of
+        the same size that can be placed flat around it so that each touches
+        it (and none overlap)? Explain why. \hfill [1]
+  \item A half-crown has diameter 32\,mm and a threepenny piece has diameter
+        15\,mm. What is the greatest number of threepenny pieces that can lie
+        flat on a half-crown, with none overlapping another or reaching
+        beyond the edge? Justify your answer. \hfill [2]
+  \item What is the largest diameter a threepenny piece could have for
+        \emph{three} of them to fit on the half-crown? Give an exact answer.
+        \hfill [2]
+\end{parts}
+\answerline
+\end{problem}
+
+\begin{problem}{5}
+A millionaire wants to give away exactly \$1\,000\,000. Each gift must be
+\$1 or a power of 7 (\$7, \$49, \$343, \dots), and no amount may be given
+to more than six people.
+\begin{parts}
+  \item How many people receive a gift, and how many receive each amount?
+        \hfill [2]
+  \item Explain why there is only one way to do it. \hfill [2]
+  \item How many people would receive a gift if he gave away
+        \$1\,000\,000\,000 under the same rules? \hfill [1]
+\end{parts}
+\answerline
+\end{problem}
+
+\begin{problem}{5}
+Take an amount \pounds$a$\;$s$s\;$d$d in which the number of pounds is
+greater than the number of pence ($a > d$; zero shillings or pence are
+allowed). Its \emph{reversal} is the amount with $d$ pounds, $s$ shillings
+and $a$ pence, i.e.\ $240d + 12s + a$ pence (so $a$ may be 12 or more here).
+
+Now apply this rule:
+\begin{enumerate}[label=\arabic*., leftmargin=2em, itemsep=0pt]
+  \item Subtract the reversal from the original amount, and write the
+        difference in pounds, shillings and pence in the usual way
+        (shillings 0--19, pence 0--11).
+  \item Add the difference to its own reversal.
+\end{enumerate}
+For amounts with fewer than \pounds12 the result is always
+\pounds12\;18s\;11d.
+\begin{parts}
+  \item Check the rule for \pounds7\;3s\;2d. \hfill [1]
+  \item Show that the difference in step 1 is always $239(a-d)$ pence.
+        \hfill [1]
+  \item Without the ``fewer than \pounds12'' condition, what is the smallest
+        amount for which the result is \emph{not} \pounds12\;18s\;11d?
+        \hfill [1]
+  \item What is the largest amount for which the result \emph{is}
+        \pounds12\;18s\;11d? \hfill [2]
+\end{parts}
+\answerline
+\end{problem}
+
+\begin{problem}{5}
+An excursion ticket costs 19s\,9d. The coins in use are: farthing,
+halfpenny, penny, threepence, sixpence, shilling, florin, half-crown, double
+florin, crown and half-sovereign. Two payments are different if they use a
+different number of some coin (the order of the coins does not matter).
+\begin{parts}
+  \item In how many ways can you pay 3d? \hfill [1]
+  \item In how many ways can you pay 6d? \hfill [2]
+  \item Describe an efficient method for counting the ways to pay any amount,
+        and explain why it does not count the same payment twice. \hfill [2]
+\end{parts}
+\answerline
+\end{problem}
+
+\clearpage
+% ==================================================================
+\section*{Section C \quad Algorithm Design \hfill\normalsize (6 problems, 50 marks)}
+% ==================================================================
+
+\noindent For each problem in this section, write an \textbf{algorithm
+description}, not a program. A full answer explains the key observation,
+lists the steps of the algorithm, argues why it gives the right answer, and
+states the time complexity. The constraints tell you how fast your method
+needs to be.
+
+\begin{problem}{5}
+You are given a string $s$ of $n$ lowercase letters and a letter $c$. In one
+move you may pick any position $i$ and replace $s_i$ with the letter $c$.
+(You may only ever write the letter $c$.)
+
+Find the minimum number of moves needed to turn $s$ into a palindrome, i.e.\
+a string that reads the same forwards and backwards.
+
+\smallskip\noindent\textbf{Constraints.} $1 \le n \le 2\cdot 10^5$.
+\begin{example}
+$s = \texttt{kenya}$, $c = \texttt{a}$. The answer is $3$: change $s_1$, $s_2$
+and $s_4$ to \texttt{a}, giving \texttt{aanaa}.
+\end{example}
+\task
+\end{problem}
+
+\begin{problem}{8}
+The \emph{mode} of an array is the value that appears most often; if several
+values tie, the mode is the largest of them. For example, the mode of
+$[1,1,2]$ is $1$ and the mode of $[3,4]$ is $4$.
+
+You are given an array $a$ of $n$ positive integers. You may rearrange its
+elements in any order. Find an arrangement that makes the sum of the modes
+of all $n$ prefixes as large as possible, and output that arrangement.
+
+\smallskip\noindent\textbf{Constraints.} $1 \le n \le 2\cdot 10^5$,
+$1 \le a_i \le 10^9$.
+\begin{example}
+$a = [2,5,2,5,5,1]$. The arrangement $[5,2,1,5,2,5]$ has mode $5$ for every
+prefix, giving the maximum possible sum $30$.
+\end{example}
+\task
+\end{problem}
+
+\begin{problem}{9}
+A treasury has $n$ piles of coins; pile $i$ holds $a_i$ coins. A pirate
+holds a number $x$ and steals as follows:
+\begin{enumerate}[leftmargin=2em, itemsep=0pt]
+  \item He picks a pile $i$ with $a_i > 0$ and $\gcd(a_i, x) \ne 1$. If no
+        such pile exists, he stops.
+  \item Let $g = \gcd(a_i, x)$. He takes exactly $g$ coins from pile $i$
+        (so $a_i$ decreases by $g$) and then sets $x = g$.
+  \item He repeats from step 1.
+\end{enumerate}
+Find the maximum total number of coins he can steal.
+
+\smallskip\noindent\textbf{Constraints.} $1 \le n \le 2\cdot 10^5$,
+$1 \le a_i \le 3\cdot 10^5$, $2 \le x \le 3\cdot 10^5$.
+\begin{example}
+$x = 6$, $a = [4, 9, 10]$. The answer is $14$: he can empty the piles of
+$4$ and $10$ coins.
+\end{example}
+\task
+\end{problem}
+
+\begin{problem}{9}
+An array $b_1, \dots, b_m$ is a \emph{hill} if for some position $k$ it
+strictly increases up to $b_k$ and strictly decreases after it:
+$b_1 < \dots < b_k > b_{k+1} > \dots > b_m$. (A purely increasing or purely
+decreasing array is also a hill.)
+
+You are given an array $a$ of $n$ distinct integers. In one operation you
+may swap $a_i$ and $a_{i+2}$ for any $i$. Decide whether $a$ can be turned
+into a hill using any number of operations.
+
+\smallskip\noindent\textbf{Constraints.} $1 \le n \le 2\cdot 10^5$.
+\begin{example}
+$[2,4,1,3,5]$: \textbf{YES} (for instance $[2,4,5,3,1]$ can be reached).
+\quad $[1,3,2,4]$: \textbf{NO}.
+\end{example}
+\task
+\end{problem}
+
+\begin{problem}{9}
+A binary string is \emph{clean} if all its characters are equal. In one move
+you may choose a clean substring (a block of equal characters) and flip every
+character in it ($0 \leftrightarrow 1$). The \emph{beauty} of a string is the
+minimum number of moves needed to make the whole string clean. The
+\emph{power} of a string is the sum of the beauties of all its substrings.
+
+You are given a binary string $s$ of length $n$, followed by $q$ updates.
+Each update gives a position $i$ and flips $s_i$. Output the power of $s$
+before any update and after every update.
+
+\smallskip\noindent\textbf{Constraints.} $1 \le n, q \le 2\cdot 10^5$.
+\begin{example}
+$s = \texttt{0110}$ has power $5$. After flipping position $1$ the string is
+\texttt{1110}, whose power is $3$.
+\end{example}
+\task
+\end{problem}
+
+\begin{problem}{10}
+For an array $b$ of $m$ integers, a \emph{transformation} does the following:
+write down $b_i \oplus b_j$ for every pair $i < j$ (where $\oplus$ is bitwise
+XOR), and replace the array with the $m$ smallest values written.
+
+You are given an array $a$ of $n$ non-negative integers and $q$ queries.
+Each query gives a number $k$; answer with $\max(a) - \min(a)$ after
+applying the transformation $k$ times to the \emph{original} array.
+
+\smallskip\noindent\textbf{Constraints.} $6 \le n \le 1000$,
+$0 \le a_i < 2^{30}$, $1 \le q \le 2\cdot 10^5$, $0 \le k \le 10^9$.
+\begin{example}
+$a = [6,7,8,9,15,1]$. The arrays after $0,1,2,3$ transformations are
+$[1,6,7,8,9,15]$, $[1,1,6,6,7,7]$, $[0,0,0,1,1,1]$ and $[0,0,0,0,0,0]$, so
+the answers for $k = 0, 1, 2$ and any $k \ge 3$ are $14, 6, 1$ and $0$.
+\end{example}
+\task
+\end{problem}
+
+\begin{center}
+\vspace{1em}
+{\color{kiogreen}\rule{0.3\linewidth}{0.8pt}}\quad
+\textsc{End of Paper}\quad
+{\color{kiogreen}\rule{0.3\linewidth}{0.8pt}}
+\end{center}
+
+% ==================================================================
+%  MARKING SCHEME (abridged here: only the Section A answer table is read by the converter;
+%  keep your full marking scheme in this block as usual)
+% ==================================================================
+\ifanswers
+\newpage
+\section*{Marking Scheme}
+
+\subsection*{Section A}
+\begin{center}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{|c|*{7}{>{\centering\arraybackslash}p{1.1cm}|}}
+\hline
+\textbf{Problem} & 1 & 2 & 3 & 4 & 5 & 6 & 7 \\ \hline
+\textbf{Answer}  & B & C & D & A & E & C & B \\ \hline
+\end{tabular}
+\end{center}
+\fi
+
+\end{document}

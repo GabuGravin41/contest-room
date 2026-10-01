@@ -1,6 +1,6 @@
 // POST /api/sync  { code, token, seq, ans:{key:value}, ev:"compact events", base, clientNow, snap, final }
 // Saves changed answers and appends one activity-log batch. Idempotent per (code, token, seq).
-import { config, db, readBody, send, normCode } from '../lib/server.js';
+import { config, windowFor, db, readBody, send, normCode } from '../lib/server.js';
 import { ANSWER_KEYS } from '../lib/paper.js';
 
 const MAX_ANSWER = 20000;       // characters per answer box
@@ -18,12 +18,13 @@ export default async function handler(req, res) {
     const now = Date.now();
     if (!code || !tok || seq < 0) return send(res, 400, { error: 'Bad request' });
 
-    const [s] = await sql`select active_token, submitted_at from sessions where code = ${code}`;
+    const [s] = await sql`select active_token, submitted_at, first_join_at from sessions where code = ${code}`;
     if (!s) return send(res, 404, { error: 'Unknown session' });
 
     const stale = s.active_token !== tok;          // code was opened on another device later
-    const late = now > cfg.end;
-    const closed = now > cfg.end + cfg.graceMs;
+    const w = windowFor(cfg, s.first_join_at, now);
+    const late = now > w.end;
+    const closed = now > w.end + cfg.graceMs;
     const final = !!b.final;
 
     const ans = {};
@@ -56,7 +57,7 @@ export default async function handler(req, res) {
       if (final) submitted = true;
     }
 
-    return send(res, 200, { ok: true, serverNow: now, superseded: stale, closed, submitted, end: cfg.end });
+    return send(res, 200, { ok: true, serverNow: now, superseded: stale, closed, submitted, end: w.end });
   } catch (e) {
     console.error(e);
     return send(res, 500, { error: 'Server error' });

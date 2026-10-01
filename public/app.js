@@ -5,6 +5,10 @@
   'use strict';
   const app = document.getElementById('app');
   const DEMO = !!window.CR_DEMO;
+  const PREVIEW = /[?&]preview\b/.test(location.search);
+  const SHOWLOG = DEMO || PREVIEW;
+  // Text and logos for the screens shown before the paper opens. Edit public/branding.js.
+  const B = Object.assign({ name: 'The Contest Room', event: 'Kenya Informatics Olympiad 2026', round: 'Round 1', details: '2 hours 30 minutes · 20 problems · 100 marks', logos: [] }, window.CR_BRAND || {});
 
   // ---------- small utilities ----------
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -106,7 +110,7 @@
     if (!S.paper || S.submitted || S.superseded) return;
     const e = [Math.round(now() - S.start), type, clean(q), clean(a), clean(b)];
     S.events.push(e);
-    if (DEMO) demoLog(e);
+    if (SHOWLOG) demoLog(e);
     persistSoon();
   }
   function encode(evs) {
@@ -144,13 +148,17 @@
       const r = await api('sync', { code: S.code, token: S.token, ...S.pending });
       setClock(r.serverNow, t0, Date.now());
       const wasFinal = S.pending.final;
-      S.pending = null; S.lastSaved = now(); persist();
+      S.pending = null; S.lastSaved = now(); S.failSince = null; persist();
+      const eb = document.getElementById('ebanner'); if (eb) eb.hidden = true;
       if (r.superseded) return onSuperseded();
       if (r.submitted && (wasFinal || !S.finalRequested)) return onSubmitted(wasFinal);
       if (r.closed) return onClosed();
       setSave('saved');
     } catch (e) {
       setSave('offline');
+      S.failSince = S.failSince || Date.now();
+      const eb = document.getElementById('ebanner');
+      if (eb && Date.now() - S.failSince > 120_000) eb.hidden = false;
     } finally { S.inflight = false; }
   }
 
@@ -186,16 +194,19 @@
   }
 
   // ---------- screens ----------
-  const shell = (inner, wide) => `<div class="flagline"></div>${DEMO ? '<div class="demo-ribbon">Demo mode: nothing leaves this browser. Any code works, e.g. KIO-DEMO-2026. <button class="linkbtn" type="button" data-reset style="color:inherit">Reset demo</button></div>' : ''}<main class="gate"><div class="card${wide ? ' wide' : ''}"><div class="card-body">${inner}</div></div></main>`;
-  const brand = `<div class="brand"><span class="dot"></span>The Contest Room</div>`;
+  const ribbon = exam => DEMO ? `<div class="demo-ribbon">Demo mode: nothing leaves this browser. ${exam ? 'The panel at the bottom right shows what the log records.' : 'Any code works, e.g. KIO-DEMO-2026.'} <button class="linkbtn" type="button" data-reset style="color:inherit">Reset demo</button></div>`
+    : PREVIEW ? '<div class="demo-ribbon">Admin preview: this is exactly what students see. Nothing is saved and the clock is not real.</div>' : '';
+  const logos = cls => B.logos.length ? `<div class="logos ${cls || ''}">${B.logos.map(l => `<img src="${esc(l.src)}" alt="${esc(l.alt || '')}">`).join('')}</div>` : '';
+  const shell = (inner, wide) => `<div class="flagline"></div>${ribbon(false)}<main class="gate"><div class="card${wide ? ' wide' : ''}"><div class="card-body">${logos()}${inner}</div></div></main>`;
+  const brand = `<div class="brand"><span class="dot"></span>${esc(B.name)}</div>`;
 
   function screenJoin(prefill = '', err = '') {
     app.dataset.screen = 'join';
     app.innerHTML = shell(`
       ${brand}
-      <div><div class="eyebrow">Kenya Informatics Olympiad 2026</div></div>
-      <h1>Round 1</h1>
-      <p class="sub">2 hours 30 minutes · 20 problems · 100 marks</p>
+      <div><div class="eyebrow">${esc(B.event)}</div></div>
+      <h1>${esc(B.round)}</h1>
+      <p class="sub">${esc(B.details)}</p>
       <form id="joinForm" class="field" autocomplete="off" novalidate>
         <label for="code">Contest code</label>
         <input id="code" class="codein" inputmode="text" autocapitalize="characters" spellcheck="false" placeholder="KIO-XXXX-XXXX" value="${esc(prettyCode(prefill))}" maxlength="13" aria-describedby="joinErr">
@@ -226,7 +237,7 @@
       return;
     }
     setClock(r.serverNow, t0, Date.now());
-    Object.assign(S, { code, student: r.student, start: r.start, end: r.end, syncSeconds: r.syncSeconds || 60 });
+    Object.assign(S, { code, student: r.student, start: r.start, end: r.end, syncSeconds: r.syncSeconds || 60, fallbackEmail: r.fallbackEmail || '', mode: r.mode });
     store.set('cr:last', code);
     if (r.status === 'waiting') return screenWaiting();
     if (r.status === 'submitted') { S.submitted = true; return screenDone('submitted', r.submittedAt); }
@@ -330,12 +341,13 @@
     const s = S.student || {};
     app.innerHTML = `
       <div class="exam">
-        <div><div class="flagline"></div>${DEMO ? '<div class="demo-ribbon">Demo mode: nothing leaves this browser. The panel at the bottom right shows what the log records. <button class="linkbtn" type="button" data-reset style="color:inherit">Reset demo</button></div>' : ''}
+        <div><div class="flagline"></div>${ribbon(true)}
         <header class="bar">
-          <div class="bar-l">${brand}<div class="who"><b>${esc(s.name || '')}</b>${s.school ? ' · ' + esc(s.school) : ''} · <span style="font-family:var(--mono)">${esc(prettyCode(S.code))}</span></div></div>
+          <div class="bar-l">${logos('small')}${brand}<div class="who"><b>${esc(s.name || '')}</b>${s.school ? ' · ' + esc(s.school) : ''} · <span style="font-family:var(--mono)">${esc(prettyCode(S.code))}</span></div></div>
           <div class="bar-r"><span class="save" id="save" aria-live="polite">Saved</span><div class="timer" id="timer" aria-label="Time remaining">--:--:--</div><button class="btn primary" id="submitBtn" type="button">Submit</button></div>
         </header></div>
         <div class="banner" id="banner" hidden></div>
+        <div class="banner" id="ebanner" hidden><span>We can't reach the server. Your answers are safe on this device and will send when the connection returns.</span><button class="btn" type="button" data-savefile>Save a copy of my answers</button></div>
         <div class="layout">
           <nav class="nav" id="nav" aria-label="Problems"></nav>
           <main class="main" id="main"><div class="qwrap" id="q"></div></main>
@@ -351,7 +363,7 @@
     document.getElementById('nav').addEventListener('click', e => { const b = e.target.closest('[data-go]'); if (b) go(b.dataset.go); });
     renderNav(); renderQ();
     tick(); tickT = setInterval(tick, 250);
-    if (DEMO) demoPanel();
+    if (SHOWLOG) demoPanel();
   }
 
   const problems = () => S.paper.sections.flatMap(sec => sec.problems.map(p => ({ ...p, sec })));
@@ -371,7 +383,8 @@
 
   function moneyRef() {
     const m = S.paper.money;
-    return `<details class="ref"><summary>${esc(m.title)}</summary><div class="tw"><table>${m.rows.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</table><p class="fine" style="margin:.5rem 0 0">${esc(m.note)}</p></div></details>`;
+    if (!m) return '';
+    return `<details class="ref"><summary>${esc(m.title)}</summary><div class="tw"><table>${m.rows.map(r => `<tr>${r.map(c => `<td>${rich(c)}</td>`).join('')}</tr>`).join('')}</table><p class="fine" style="margin:.5rem 0 0">${rich(m.note)}</p></div></details>`;
   }
 
   function renderQ() {
@@ -593,14 +606,36 @@
     hideOverlay();
     const sc = document.createElement('div');
     sc.className = 'scrim'; sc.id = 'overlay';
-    sc.innerHTML = `<div class="modal" role="alertdialog" aria-live="assertive"><h3>${esc(title)}</h3><p>${esc(text)}</p>${retry ? '<div class="row"><button class="btn primary" type="button" id="retryBtn">Try again now</button></div>' : ''}</div>`;
+    sc.innerHTML = `<div class="modal" role="alertdialog" aria-live="assertive"><h3>${esc(title)}</h3><p>${esc(text)}</p>${retry ? `<p class="fine">If this continues, save a copy of your answers${S.fallbackEmail ? ` and email the file to <b>${esc(S.fallbackEmail)}</b>` : ' and send it to your contest coordinator'}.</p><div class="row"><button class="btn" type="button" data-savefile>Save a copy of my answers</button><button class="btn primary" type="button" id="retryBtn">Try again now</button></div>` : ''}</div>`;
     document.body.appendChild(sc);
     if (retry) document.getElementById('retryBtn').onclick = () => { showOverlay('Submitting', 'Sending your answers.'); requestFinal(); };
   }
   function hideOverlay() { document.getElementById('overlay')?.remove(); }
 
+  // ---------- emergency copy: a text file of the student's answers ----------
+  function saveFile() {
+    if (!S.paper) return;
+    const s = S.student || {};
+    const lines = [`${S.paper.title} · ${S.paper.round}`, `Name: ${s.name || ''}`, `School: ${s.school || ''}`, `Code: ${prettyCode(S.code)}`,
+      `Saved: ${new Date(now()).toLocaleString('en-GB', { timeZone: 'Africa/Nairobi' })} EAT`, `Last saved to server: ${S.lastSaved ? eat(S.lastSaved) : 'never'}`, ''];
+    for (const p of problems()) {
+      lines.push(`==== Problem ${p.id} ====`);
+      if (p.type === 'written') for (const pt of p.parts) lines.push(`(${pt.id}) ${S.answers[p.id + pt.id] || ''}`);
+      else lines.push(S.answers[p.id] || '');
+      lines.push('');
+    }
+    lines.push('---- machine-readable copy (do not edit) ----', JSON.stringify({ code: S.code, at: now(), answers: S.answers }));
+    const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain' }));
+    const a = Object.assign(document.createElement('a'), { href: url, download: `${prettyCode(S.code)}-answers.txt` });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    log('exp', S.cur);
+    toast(S.fallbackEmail ? `Saved. If the site stays down, email this file to ${S.fallbackEmail}.` : 'Saved. If the site stays down, send this file to your contest coordinator.', 8000);
+  }
+  document.addEventListener('click', e => { if (e.target.closest('[data-savefile]')) saveFile(); });
+
   // ---------- demo-only activity panel ----------
-  const EV_NAMES = { k: 'key', in: 'large insert', p: 'paste (own text)', pb: 'paste blocked', cp: 'copy', bl: 'window lost focus', fo: 'window focused', hid: 'tab hidden', vis: 'tab visible', fsx: 'left full screen', fse: 'full screen', go: 'opened problem', mc: 'chose option', fl: 'mark for review', ctx: 'right-click', kb: 'shortcut', rz: 'resized', on: 'online', off: 'offline', ld: 'page loaded', sub: 'submit' };
+  const EV_NAMES = { k: 'key', in: 'large insert', p: 'paste (own text)', pb: 'paste blocked', cp: 'copy', bl: 'window lost focus', fo: 'window focused', hid: 'tab hidden', vis: 'tab visible', fsx: 'left full screen', fse: 'full screen', go: 'opened problem', mc: 'chose option', fl: 'mark for review', ctx: 'right-click', kb: 'shortcut', rz: 'resized', on: 'online', off: 'offline', ld: 'page loaded', sub: 'submit', exp: 'saved answers to file' };
   function demoPanel() {
     if (document.getElementById('demoLog')) return;
     const d = document.createElement('aside');
@@ -619,6 +654,26 @@
   }
 
   // ---------- boot ----------
+  if (PREVIEW) {
+    // Admin preview: loads the paper with the admin key from /admin; nothing is saved.
+    let key = decodeURIComponent((location.hash.match(/k=([^&]+)/) || [])[1] || '');
+    if (key) history.replaceState(null, '', location.pathname + location.search); // remove the key from the address bar
+    if (!key) try { key = sessionStorage.getItem('crk') || ''; } catch { }
+    window.CR_API = async (path, b) => {
+      if (path === 'join') {
+        const r = await fetch('/api/admin?action=paper', { headers: { 'x-admin-key': key } });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.error === 'Wrong admin key' ? 'Open the preview from the admin page after unlocking it.' : (j.error || 'Could not load the paper.'));
+        const now = Date.now();
+        return { serverNow: now, start: now - 1000, end: now + (j.minutes || 150) * 60000, syncSeconds: 3600, status: 'open', token: 'preview', kind: 'new',
+          student: { name: 'Preview', school: 'Admin', code: 'KIOPREVIEWXX' }, paper: j.paper, answers: {} };
+      }
+      return { ok: true, serverNow: Date.now() };
+    };
+    try { Object.keys(localStorage).filter(k => k.includes('KIOPREVIEW')).forEach(k => localStorage.removeItem(k)); } catch { }
+    screenJoin('KIOPREVIEWXX'); join('KIOPREVIEWXX');
+    return;
+  }
   const last = store.get('cr:last');
   const lastState = last ? store.get('cr:' + last) : null;
   if (last && lastState?.token) { screenJoin(last); join(last, true); }

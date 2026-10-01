@@ -1,7 +1,7 @@
 // POST /api/join  { code, token? }
 // Before the start: returns the waiting-room info (no paper).
 // During the window: issues/resumes a session token and returns the paper + saved answers.
-import { config, db, readBody, send, clientInfo, normCode, token as newToken } from '../lib/server.js';
+import { config, windowFor, db, readBody, send, clientInfo, normCode, token as newToken } from '../lib/server.js';
 import { PAPER } from '../lib/paper.js';
 
 export default async function handler(req, res) {
@@ -12,27 +12,28 @@ export default async function handler(req, res) {
     const body = await readBody(req);
     const code = normCode(body.code);
     const now = Date.now();
-    const base = { serverNow: now, start: cfg.start, end: cfg.end, syncSeconds: cfg.syncSeconds };
-
+    
     if (code.length < 6) return send(res, 400, { error: 'Enter the contest code you were sent.' });
 
     const [row] = await sql`
       select s.code, s.name, s.school, s.county, s.candidate_no,
-             x.active_token, x.submitted_at, x.answers
+             x.active_token, x.submitted_at, x.answers, x.first_join_at
       from students s left join sessions x on x.code = s.code
       where s.code = ${code}`;
     if (!row) return send(res, 404, { error: 'We could not find that code. Check it against the message you were sent.' });
 
+    const w = windowFor(cfg, row.first_join_at, now);
+    const base = { serverNow: now, start: w.start, end: w.end, syncSeconds: cfg.syncSeconds, mode: cfg.mode, fallbackEmail: cfg.fallbackEmail };
     const student = { name: row.name, school: row.school, county: row.county, candidateNo: row.candidate_no, code };
 
     if (row.submitted_at) return send(res, 200, { ...base, status: 'submitted', student, submittedAt: +new Date(row.submitted_at) });
-    if (now < cfg.start) return send(res, 200, { ...base, status: 'waiting', student });
-    if (now > cfg.end) return send(res, 200, { ...base, status: 'closed', student });
+    if (now < w.start) return send(res, 200, { ...base, status: 'waiting', student });
+    if (now > w.end) return send(res, 200, { ...base, status: 'closed', student });
 
     const { ip, ua } = clientInfo(req);
     const resumed = !!(body.token && row.active_token && body.token === row.active_token);
 
-    if (!resumed && !row.active_token && now > cfg.joinUntil) {
+    if (!resumed && !row.active_token && now > w.joinUntil) {
       return send(res, 200, { ...base, status: 'join_closed', student });
     }
 

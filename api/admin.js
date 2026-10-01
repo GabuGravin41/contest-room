@@ -1,6 +1,7 @@
 // GET /api/admin?action=stats | student&code=... | devices    (header: x-admin-key)
 // Read-only monitor. Bulk exports are done with `npm run export` (too large for a serverless response).
-import { config, db, send, normCode } from '../lib/server.js';
+import { config, db, send, normCode, readBody, genCode, prettyCode } from '../lib/server.js';
+import { PAPER } from '../lib/paper.js';
 
 export default async function handler(req, res) {
   const key = req.headers['x-admin-key'];
@@ -22,8 +23,43 @@ export default async function handler(req, res) {
              (select 1 from joins j where j.code = sessions.code and j.kind = 'device_switch'))::int as device_switches,
           (select count(*) from logs)::int as log_batches,
           (select pg_size_pretty(pg_database_size(current_database()))) as db_size`;
-      return send(res, 200, { ...r, serverNow: Date.now(), start: cfg.start, end: cfg.end });
+      return send(res, 200, { ...r, serverNow: Date.now(), start: cfg.start, end: cfg.end, mode: cfg.mode, minutes: cfg.minutes });
     }
+
+    // Find students by name, school, county, candidate number or code.
+    if (action === 'search') {
+      const q = (url.searchParams.get('q') || '').trim();
+      if (q.length < 2) return send(res, 200, { rows: [] });
+      const like = '%' + q.replace(/[%_]/g, '') + '%';
+      const codeLike = '%' + normCode(q) + '%';
+      const rows = await sql`
+        select s.code, s.name, s.school, s.county, s.candidate_no,
+               x.first_join_at, x.last_sync_at, x.submitted_at, x.join_count
+        from students s left join sessions x using (code)
+        where s.name ilike ${like} or s.school ilike ${like} or s.county ilike ${like}
+           or s.candidate_no ilike ${like} or (length(${normCode(q)}) >= 3 and s.code like ${codeLike})
+        order by s.name limit 50`;
+      return send(res, 200, { rows: rows.map(r => ({ ...r, pretty: prettyCode(r.code) })) });
+    }
+
+    // Issue a new code on the spot (late registration, lost code). POST { name, school, county, candidate_no }
+    if (action === 'create') {
+      if (req.method !== 'POST') return send(res, 405, { error: 'Use POST' });
+      const b = await readBody(req);
+      const name = String(b.name || '').trim().slice(0, 200);
+      if (!name) return send(res, 400, { error: 'Enter the student\'s name.' });
+      for (let i = 0; i < 5; i++) {
+        const code = genCode();
+        const r = await sql`insert into students (code, name, school, county, candidate_no)
+          values (${code}, ${name}, ${String(b.school || '').trim() || null}, ${String(b.county || '').trim() || null}, ${String(b.candidate_no || '').trim() || null})
+          on conflict do nothing returning code`;
+        if (r.length) return send(res, 200, { code, pretty: prettyCode(code), name });
+      }
+      return send(res, 500, { error: 'Could not create a code, try again.' });
+    }
+
+    // The paper, for the admin preview.
+    if (action === 'paper') return send(res, 200, { paper: PAPER, minutes: cfg.minutes });
 
     if (action === 'devices') {
       const rows = await sql`

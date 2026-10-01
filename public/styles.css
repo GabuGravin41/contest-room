@@ -194,3 +194,9 @@ textarea.ans:disabled { opacity: .75; }
   .card-body { padding: 1.5rem 1.25rem; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* ---------- logos (public/branding.js) ---------- */
+.logos { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.logos img { height: 52px; width: auto; max-width: 100%; object-fit: contain; }
+.logos.small img { height: 28px; }
+.logos.small { gap: .5rem; }
