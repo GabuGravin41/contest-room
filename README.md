@@ -104,15 +104,20 @@ npm run dev            # http://localhost:3000  and  http://localhost:3000/admin
 - **Rehearse.** Run a real rehearsal with 50–100 people on phones and laptops a few days before, so problems show up while there is still time to fix them.
 - **Region.** `vercel.json` pins functions to Frankfurt (`fra1`). Keep the Neon database in Frankfurt too, so every save is a short hop.
 
-## Editing the paper (write LaTeX, as usual)
+## Uploading the paper (LaTeX)
 
-The paper source is **`paper/round1.tex`**, written in the same KIO LaTeX template as the printed paper. On every deploy, Vercel converts it into the online paper (`lib/paper.js`) and reads the Section A answer key from the marking-scheme table inside `\ifanswers … \fi` (`lib/key.js`).
+Write the paper in the usual KIO LaTeX template. Keep the marking scheme inside `\ifanswers … \fi` as usual; the Section A answer table is read from there, and nothing else in the marking scheme is shown to students.
 
-To change a problem:
-1. Edit `paper/round1.tex`. You can do this on GitHub (open the file, click the pencil) or locally.
-2. To check it locally first, run `npm run paper`. It prints the problem count, total marks and whether the answer key was found.
-3. Commit and push. Vercel redeploys in about a minute.
-4. In `/admin`, click **Preview the paper as a student** to see exactly what students will see.
+**From the admin page (easiest, anyone on the team):**
+1. Open `/admin` and enter the admin key.
+2. Under **Contest content → Paper**, click **Choose .tex file…** and pick the file.
+3. The page checks it and reports the title, number of problems, total marks, and whether the answer key was found. Fix any problem it reports, then choose the file again.
+4. Click **Use this paper**. Students get it from then on; nothing needs redeploying.
+5. Click **Preview the paper as a student** and read it through.
+
+**Go back to the built-in paper** undoes an upload. During the contest (and in the 30 minutes before it) the page refuses to change the paper unless you tick a confirmation box.
+
+**From GitHub (for whoever maintains the code):** replace `paper/round1.tex` and push. Vercel converts it on every deploy. An uploaded paper takes priority over this one.
 
 The converter understands:
 - sections: `\section*{Section A \quad Title \hfill\normalsize (notes)}`
@@ -122,11 +127,40 @@ The converter understands:
 - algorithm problems: `\textbf{Constraints.}`, `example` and `\task`
 - text: `enumerate`, `\textbf`, `\emph`, `\texttt`, and inline maths `$…$`
 
-Print-only material inside `\ifanswers\else … \fi` (name fields, the answer grid) is left out of the online version. Anything it doesn't recognise is listed as a note when it runs. The online instructions page comes from `paper/instructions.txt`.
+Print-only material (name fields, answer grid) is left out.
 
-## Logos and title
+## Instructions, name and logos (admin page)
 
-Put logo files (PNG or SVG) in `public/logos/` and list them in **`public/branding.js`**. That file also sets the event name, round, and the line shown on the code-entry screen. Logos appear on the entry, waiting and finished screens, and small in the exam header.
+Under **Contest content** in `/admin`:
+- **Instructions page:** one instruction per line, shown as the first page of the paper. It already includes the disqualification rule.
+- **Name and logos:** the event name, round and details line, plus logo uploads. Images are resized automatically. Use the arrows to reorder logos and **Remove** to delete one.
+
+Students see changes within a minute. `public/branding.js` holds the defaults that are used until something is set here.
+
+## Multiple-choice shuffling
+
+Each student sees the options of every multiple-choice problem in their own fixed order, so a message like "the answer to 3 is B" is useless. Answers are stored as the original letters from the .tex file, so marking and the answer key are unaffected. The emergency answer file records the chosen option's text. To turn shuffling off, set `SHUFFLE_MCQ=0` in Vercel.
+
+## Checking for cheating
+
+After the contest (or during it), run:
+```powershell
+npm run flags
+```
+It writes two files to `out/`:
+- `flags.csv`: every student with at least one signal, ranked **High / Medium / Low**, with plain-language reasons.
+- `flag-pairs.csv`: pairs of students whose answers match beyond chance, with whether they share a school or IP address.
+
+What it looks for:
+- **Matching written or algorithm answers:** identical 5-word phrases, ignoring phrases many students share.
+- **Answers that weren't typed:** long text with few keystrokes, or text that appeared all at once.
+- **Long answers typed straight through** with no corrections (weak on its own).
+- **Leaving the page, then a burst of writing or answers** right after returning.
+- **Speed:** 300+ characters of an algorithm answer within 90 seconds of first opening the problem, or Section A all correct within 6 minutes.
+- **Multiple choice:** near-identical wrong answers, and the same on-screen letters despite different option orders. Students at the same school or on the same IP address are held to a slightly lower bar.
+- **Behaviour:** two devices writing at once, several devices or IP addresses, blocked pastes, copying question text, developer tools, printing.
+
+Tested on a simulated contest of 300 students with ten planted cheating patterns: all ten were caught and no honest student was flagged. With only seven multiple-choice problems, MCQ evidence alone is deliberately treated cautiously. **A flag is a reason to review, not proof.** Look at the reasons, compare answers, and where it matters, ask the student to explain their solution.
 
 ## Demo mode (for showing CEMASTEA or the team)
 
@@ -146,11 +180,15 @@ Set `CONTEST_MODE=practice` in Vercel and redeploy. In practice mode the start t
 ```
 api/join.js     code check, waiting room, session token, paper delivery
 api/sync.js     autosave + activity log (idempotent; stale-device and late flags)
-api/admin.js    monitor, search, issue codes, preview, backups (x-admin-key)
-paper/round1.tex   the paper (LaTeX); lib/paper.js and lib/key.js are generated from it
+api/admin.js    monitor, search, issue codes, preview, paper/logo/instructions uploads, backups (x-admin-key)
+api/brand.js    public: event name and logos for the student page
+paper/round1.tex   built-in paper (LaTeX); lib/paper.js and lib/key.js are generated from it
+lib/tex.js      LaTeX → online paper converter
+lib/store.js    uploaded paper, settings, logos
+lib/shuffle.js  per-student MCQ option order
 public/branding.js event name, round, logos
 lib/server.js   config, DB pool, helpers
 public/         index.html, app.js, styles.css, admin.html
-scripts/        schema.sql, setup-db.js, add-students.js, export.js, build-demo.js
+scripts/        schema.sql, setup-db.js, add-students.js, export.js, flags.js, tex-to-paper.js, build-demo.js
 dev-server.js   local stand-in for Vercel
 ```

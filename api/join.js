@@ -2,7 +2,8 @@
 // Before the start: returns the waiting-room info (no paper).
 // During the window: issues/resumes a session token and returns the paper + saved answers.
 import { config, windowFor, db, readBody, send, clientInfo, normCode, token as newToken } from '../lib/server.js';
-import { PAPER } from '../lib/paper.js';
+import { activePaper } from '../lib/store.js';
+import { paperFor } from '../lib/shuffle.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return send(res, 405, { error: 'Use POST' });
@@ -51,7 +52,7 @@ export default async function handler(req, res) {
 
     return send(res, 200, {
       ...base, status: 'open', student, token: tok, kind,
-      paper: PAPER, answers: row.answers || {},
+      paper: paperFor((await activePaper(sql)).paper, code), answers: row.answers || {},
     });
   } catch (e) {
     console.error(e);

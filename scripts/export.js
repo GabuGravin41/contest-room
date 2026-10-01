@@ -5,15 +5,16 @@
 //   events.jsonl  full decoded activity log, one event per line (t = ms since contest start)
 import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { db, config } from '../lib/server.js';
-import { ANSWER_KEYS } from '../lib/paper.js';
-import { MCQ_KEY, MCQ_POINTS } from '../lib/key.js';
+import { activePaper } from '../lib/store.js';
 import { toCSV } from './csv.js';
 
 const sql = db();
 const cfg = config();
 mkdirSync('out', { recursive: true });
 const iso = d => (d ? new Date(d).toISOString() : '');
-const keys = [...ANSWER_KEYS];
+const AP = await activePaper(sql);
+const MCQ_KEY = AP.key || {}, MCQ_POINTS = AP.points || {};
+const keys = [...AP.answerKeys];
 
 const rows = await sql`select s.*, x.first_join_at, x.last_sync_at, x.submitted_at, x.join_count, x.sync_count, x.late_syncs, x.answers
   from students s left join sessions x using (code) order by s.school, s.name`;

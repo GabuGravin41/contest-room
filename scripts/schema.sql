@@ -55,3 +55,11 @@ create table if not exists logs (
   unique (code, token, seq)
 );
 create index if not exists logs_code on logs(code);
+
+-- Admin-page content (also created automatically on first use)
+create table if not exists papers (
+  id bigserial primary key, uploaded_at timestamptz default now(), filename text, tex text,
+  paper jsonb not null, key jsonb, points jsonb, summary jsonb, active boolean default true);
+create table if not exists settings (key text primary key, value jsonb, updated_at timestamptz default now());
+create table if not exists logos (
+  id bigserial primary key, alt text, mime text, data text, pos int default 0, created_at timestamptz default now());

@@ -1,7 +1,7 @@
 // POST /api/sync  { code, token, seq, ans:{key:value}, ev:"compact events", base, clientNow, snap, final }
 // Saves changed answers and appends one activity-log batch. Idempotent per (code, token, seq).
 import { config, windowFor, db, readBody, send, normCode } from '../lib/server.js';
-import { ANSWER_KEYS } from '../lib/paper.js';
+import { activePaper } from '../lib/store.js';
 
 const MAX_ANSWER = 20000;       // characters per answer box
 const MAX_EVENTS = 1_500_000;   // characters of log per batch
@@ -27,10 +27,11 @@ export default async function handler(req, res) {
     const closed = now > w.end + cfg.graceMs;
     const final = !!b.final;
 
+    const { answerKeys } = await activePaper(sql);
     const ans = {};
     if (b.ans && typeof b.ans === 'object') {
       for (const [k, v] of Object.entries(b.ans)) {
-        if (ANSWER_KEYS.has(k) && typeof v === 'string') ans[k] = v.slice(0, MAX_ANSWER);
+        if (answerKeys.has(k) && typeof v === 'string') ans[k] = v.slice(0, MAX_ANSWER);
       }
     }
     const hasAns = Object.keys(ans).length > 0;

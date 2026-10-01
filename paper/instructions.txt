@@ -5,4 +5,6 @@ The paper has <b>20 problems</b> in three sections, worth <b>100 marks</b> in to
 <b>Section B</b> (Problems 8–14) needs written answers. Show your working in each box; working earns partial credit.
 <b>Section C</b> (Problems 15–20) asks you to describe algorithms. Explain the key idea, the steps, why it is correct, and the running time. You do not need to write code.
 Your answers save automatically. You can move between problems and change answers at any time before you submit.
-Stay on this page. Leaving it, switching tabs, and pasting text from elsewhere are recorded. Calculators, other websites and AI tools are not allowed.
+Not sure about a problem? Click <b>Come back to this later</b> under it. An orange dot appears on that problem's number in the list on the left, so you can find it again. It is only a reminder for you and does not affect your marks.
+Stay on this page. Leaving it, switching tabs, and pasting text from elsewhere are recorded.
+<b>Any form of cheating leads to immediate disqualification.</b> This includes using other websites, AI tools or calculators, getting help from another person, and sharing answers.

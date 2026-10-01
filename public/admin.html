@@ -25,6 +25,10 @@
   .chips { display: flex; flex-wrap: wrap; gap: .4rem; }
   .chip { font-size: .8rem; padding: .15rem .55rem; border-radius: 99px; background: var(--accent-soft); }
   .chip.hot { background: var(--crit-soft); color: var(--red); }
+  .logo-item { display: grid; gap: .3rem; justify-items: center; padding: .6rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+  .logo-item img { height: 48px; max-width: 180px; object-fit: contain; }
+  .logo-item .row { gap: .3rem; }
+  .ok { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -56,6 +60,43 @@
       </form>
       <div id="created"></div>
     </div>
+    <h2 style="margin:1rem 0 0;font-size:1.15rem">Contest content</h2>
+    <div class="panel">
+      <h2>Paper</h2>
+      <p class="fine" style="margin:0" id="paperNow">Loading…</p>
+      <div class="row">
+        <label class="btn" for="texFile" style="cursor:pointer">Choose .tex file…</label>
+        <input type="file" id="texFile" accept=".tex,text/plain" hidden>
+        <span class="fine" id="texName">Use the usual KIO LaTeX template, with the marking scheme inside \ifanswers.</span>
+      </div>
+      <div id="texResult"></div>
+      <div class="row">
+        <button class="btn" type="button" id="paperRevert">Go back to the built-in paper</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Instructions page</h2>
+      <p class="fine" style="margin:0">One instruction per line. Shown to students as the first page of the paper. Simple formatting: &lt;b&gt;bold&lt;/b&gt;.</p>
+      <textarea id="insText" class="t" rows="10" style="width:100%;font:inherit;line-height:1.5"></textarea>
+      <div class="row"><button class="btn primary" type="button" id="insSave">Save instructions</button><span class="fine" id="insMsg"></span></div>
+    </div>
+    <div class="panel">
+      <h2>Name and logos</h2>
+      <p class="fine" style="margin:0">Shown on the code-entry, waiting and finished screens, and small in the exam header.</p>
+      <div class="row">
+        <input class="t" id="bEvent" placeholder="Event, e.g. Kenya Informatics Olympiad 2026" style="flex:2 1 16rem">
+        <input class="t" id="bRound" placeholder="Round, e.g. Round 1" style="flex:1 1 8rem">
+        <input class="t" id="bDetails" placeholder="Details, e.g. 2 hours 30 minutes · 20 problems · 100 marks" style="flex:2 1 16rem">
+        <button class="btn primary" type="button" id="bSave">Save</button>
+      </div>
+      <div class="row" id="logoList"></div>
+      <div class="row">
+        <input class="t" id="logoAlt" placeholder="Organisation name (for screen readers)" style="flex:1 1 14rem">
+        <label class="btn" for="logoFile" style="cursor:pointer">Upload a logo…</label>
+        <input type="file" id="logoFile" accept="image/png,image/jpeg,image/svg+xml,image/webp" hidden>
+        <span class="fine" id="logoMsg">PNG, JPG, SVG or WebP. It is resized automatically.</span>
+      </div>
+    </div>
     <div class="panel">
       <div class="row" style="justify-content:space-between"><h2>More than one device, IP or browser</h2><button class="btn" id="devBtn" type="button">Load</button></div>
       <div class="tw" id="devices"></div>
@@ -72,7 +113,7 @@
     const r = await fetch('/api/admin?' + q, { headers: { 'x-admin-key': key } });
     const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Error'); return j;
   }
-  async function stats() {
+  let stats = async function () {
     try {
       const s = await get('action=stats');
       $('err').textContent = ''; $('body').hidden = false;
@@ -82,7 +123,7 @@
       $('when').innerHTML = mode + ' ' + esc(s.mode === 'practice' ? `${s.minutes} minutes from each student's first entry · updated ${fmt(s.serverNow)}` : `Contest ${fmt(s.start)} to ${fmt(s.end)} EAT · updated ${fmt(s.serverNow)} · refreshes every 30 s`);
     } catch (e) { $('err').textContent = e.message; $('body').hidden = true; }
   }
-  const NAMES = { k: 'keys', in: 'large inserts', p: 'pastes (own)', pb: 'pastes blocked', cp: 'copies', bl: 'blurs', fo: 'focus', hid: 'tab hidden', vis: 'tab visible', fsx: 'left full screen', fse: 'full screen', go: 'navigations', mc: 'MCQ picks', fl: 'flags', ctx: 'right-clicks', kb: 'shortcuts', rz: 'resizes', on: 'online', off: 'offline', ld: 'page loads', sub: 'submit', exp: 'saved answers to file' };
+  const NAMES = { k: 'keys', in: 'large inserts', p: 'pastes (own)', pb: 'pastes blocked', cp: 'copies', bl: 'blurs', fo: 'focus', hid: 'tab hidden', vis: 'tab visible', fsx: 'left full screen', fse: 'full screen', go: 'navigations', mc: 'MCQ picks', fl: 'come back later', ctx: 'right-clicks', kb: 'shortcuts', rz: 'resizes', on: 'online', off: 'offline', ld: 'page loads', sub: 'submit', exp: 'saved answers to file' };
   const HOT = new Set(['pb', 'hid', 'bl', 'fsx', 'in', 'cp', 'kb', 'off']);
   $('kf').onsubmit = e => { e.preventDefault(); key = $('key').value; try { sessionStorage.setItem('crk', key); } catch {} stats(); };
   const status = r => r.submitted_at ? 'Submitted' : r.last_sync_at ? 'Writing' : r.first_join_at ? 'Joined' : 'Not joined';
@@ -126,6 +167,81 @@
     } catch (e) { $('devices').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
   };
   $('pvLink').onclick = () => { $('pvLink').href = '/?preview#k=' + encodeURIComponent(key); };
+  // ---------- contest content ----------
+  async function post(action, body) {
+    const r = await fetch('/api/admin?action=' + action, { method: 'POST', headers: { 'x-admin-key': key, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({})); if (!r.ok) { const e = new Error(j.error || 'Error'); e.status = r.status; throw e; } return j;
+  }
+  let live = false;
+  async function loadContent() {
+    try {
+      const d = await get('action=settings'); live = d.contestLive;
+      const p = d.paper;
+      $('paperNow').innerHTML = `Students get: <b>${esc(p.title)} · ${esc(p.round)}</b>, ${p.problems} problems, ${p.marks} marks, Section A key ${p.mcqKey ? 'found' : '<span class="err">missing</span>'}. ` +
+        (p.source === 'uploaded' ? `Uploaded from <b>${esc(p.filename || 'a .tex file')}</b> on ${fmt(p.uploadedAt)}.` : 'This is the built-in paper from the GitHub repository.');
+      $('paperRevert').hidden = p.source !== 'uploaded';
+      $('insText').value = (d.instructions || []).join('\n');
+      $('bEvent').value = d.brand.event || ''; $('bRound').value = d.brand.round || ''; $('bDetails').value = d.brand.details || '';
+      $('logoList').innerHTML = d.logos.length ? d.logos.map((l, i) => `<div class="logo-item"><img src="/api/brand?logo=${encodeURIComponent(l.id)}" alt="${esc(l.alt)}"><span class="fine">${esc(l.alt || 'Logo')}</span>
+        <div class="row">${i ? `<button class="btn" type="button" data-move="left" data-id="${l.id}" aria-label="Move left">←</button>` : ''}${i < d.logos.length - 1 ? `<button class="btn" type="button" data-move="right" data-id="${l.id}" aria-label="Move right">→</button>` : ''}<button class="btn" type="button" data-del="${l.id}">Remove</button></div></div>`).join('') : '<p class="fine">No logos uploaded yet.</p>';
+    } catch (e) { $('paperNow').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  }
+  // Paper: check first, then confirm.
+  let pendingTex = null;
+  $('texFile').onchange = async () => {
+    const f = $('texFile').files[0]; if (!f) return;
+    $('texName').textContent = f.name; pendingTex = { tex: await f.text(), filename: f.name };
+    $('texResult').innerHTML = '<p class="fine">Checking…</p>';
+    try {
+      const r = await post('paper-upload', { ...pendingTex, check: true });
+      const sm = r.summary;
+      $('texResult').innerHTML = `<p>Found <b>${esc(sm.title)} · ${esc(sm.round)}</b>: <b>${sm.problems} problems, ${sm.marks} marks</b> (sections ${esc(sm.sections)}).
+        ${sm.missingKey.length ? `<span class="err">No answer found for multiple-choice problems ${sm.missingKey.join(', ')}. Add the answer table inside \\ifanswers, or Section A can't be marked automatically.</span>` : `Answer key for all ${sm.mcq} multiple-choice problems found.`}</p>
+        ${r.warnings.length ? `<p class="fine">Ignored LaTeX commands: ${r.warnings.map(esc).join(', ')}. Usually harmless; check the preview.</p>` : ''}
+        ${live ? '<p class="err"><label><input type="checkbox" id="force"> I understand the contest is about to start or is running, and students will see the new paper immediately.</label></p>' : ''}
+        <div class="row"><button class="btn primary" type="button" id="texUse">Use this paper</button><button class="btn" type="button" id="texCancel">Cancel</button></div>`;
+      $('texCancel').onclick = () => { $('texResult').innerHTML = ''; pendingTex = null; $('texFile').value = ''; };
+      $('texUse').onclick = async () => {
+        try { await post('paper-upload', { ...pendingTex, force: !!$('force')?.checked }); $('texResult').innerHTML = '<p class="ok">Paper updated. Use "Preview the paper as a student" to check it.</p>'; $('texFile').value = ''; loadContent(); }
+        catch (e) { $('texResult').insertAdjacentHTML('beforeend', `<p class="err">${esc(e.message)}</p>`); }
+      };
+    } catch (e) { $('texResult').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  };
+  $('paperRevert').onclick = async () => {
+    try { await post('paper-revert', { force: live }); loadContent(); } catch (e) { $('paperNow').insertAdjacentHTML('beforeend', ` <span class="err">${esc(e.message)}</span>`); }
+  };
+  $('insSave').onclick = async () => {
+    try { const r = await post('instructions-save', { text: $('insText').value }); $('insMsg').textContent = `Saved ${r.count} instructions.`; } catch (e) { $('insMsg').textContent = e.message; }
+  };
+  $('bSave').onclick = async () => {
+    try { await post('brand-save', { event: $('bEvent').value, round: $('bRound').value, details: $('bDetails').value }); $('logoMsg').textContent = 'Saved. Students see it within a minute.'; } catch (e) { $('logoMsg').textContent = e.message; }
+  };
+  // Logos are resized in the browser to at most 200 px high and saved as PNG.
+  $('logoFile').onchange = async () => {
+    const f = $('logoFile').files[0]; if (!f) return;
+    if (f.size > 8e6) { $('logoMsg').textContent = 'That file is over 8 MB. Use a smaller image.'; return; }
+    $('logoMsg').textContent = 'Uploading…';
+    try {
+      const url = URL.createObjectURL(f);
+      const img = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => bad(new Error('Could not read that image.')); i.src = url; });
+      const h = Math.min(200, img.naturalHeight || 200), w = Math.round((img.naturalWidth || 200) * h / (img.naturalHeight || 200));
+      const c = Object.assign(document.createElement('canvas'), { width: Math.min(w, 900), height: h });
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+      await post('logo-upload', { alt: $('logoAlt').value || f.name.replace(/\.[^.]+$/, ''), dataUrl: c.toDataURL('image/png') });
+      $('logoMsg').textContent = 'Logo added. Students see it within a minute.'; $('logoAlt').value = ''; $('logoFile').value = '';
+      loadContent();
+    } catch (e) { $('logoMsg').textContent = e.message; }
+  };
+  $('logoList').onclick = async e => {
+    const d = e.target.closest('[data-del]'), m = e.target.closest('[data-move]');
+    try {
+      if (d) await post('logo-delete', { id: d.dataset.del });
+      if (m) await post('logo-move', { id: m.dataset.id, dir: m.dataset.move });
+      if (d || m) loadContent();
+    } catch (err) { $('logoMsg').textContent = err.message; }
+  };
+  const _stats = stats;
+  stats = async () => { await _stats(); if (!$('body').hidden && !loadContent.done) { loadContent.done = true; loadContent(); } };
   if (key) stats();
   setInterval(() => { if (key && !document.hidden) stats(); }, 30000);
 })();

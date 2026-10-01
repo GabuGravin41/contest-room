@@ -11,7 +11,8 @@
     "students": "node --env-file=.env scripts/add-students.js",
     "export": "node --env-file=.env scripts/export.js",
     "demo": "node scripts/build-demo.js",
-    "paper": "node scripts/tex-to-paper.js paper/round1.tex"
+    "paper": "node scripts/tex-to-paper.js paper/round1.tex",
+    "flags": "node --env-file=.env scripts/flags.js"
   },
   "dependencies": {
     "postgres": "3.4.9"

@@ -1,7 +1,7 @@
 /* The Contest Room — student client.
    Answers and the activity log are kept in memory and in localStorage, and sent to /api/sync every
    `syncSeconds` (plus on submit and when the page closes). Nothing is lost on reload or a dropped connection. */
-(() => {
+(async () => {
   'use strict';
   const app = document.getElementById('app');
   const DEMO = !!window.CR_DEMO;
@@ -376,9 +376,9 @@
     const all = problems(); const done = all.filter(isAnswered).length;
     nav.innerHTML = `<button class="nav-intro ${S.cur === 'intro' ? 'cur' : ''}" data-go="intro" type="button">Instructions</button>` +
       S.paper.sections.map(sec => `<div class="nav-sec"><div class="nav-h"><span>${sec.id}</span><span class="nt">&nbsp;· ${esc(sec.title)}</span></div><div class="grid">${sec.problems.map(p =>
-        `<button type="button" data-go="${p.id}" class="qb ${isAnswered(p) ? 'done' : ''} ${S.cur === p.id ? 'cur' : ''} ${S.flags.has(p.id) ? 'flag' : ''}" aria-label="Problem ${p.id}${isAnswered(p) ? ', answered' : ''}${S.flags.has(p.id) ? ', marked for review' : ''}">${p.id}</button>`).join('')}</div></div>`).join('') +
+        `<button type="button" data-go="${p.id}" class="qb ${isAnswered(p) ? 'done' : ''} ${S.cur === p.id ? 'cur' : ''} ${S.flags.has(p.id) ? 'flag' : ''}" aria-label="Problem ${p.id}${isAnswered(p) ? ', answered' : ''}${S.flags.has(p.id) ? ', marked to come back to later' : ''}">${p.id}</button>`).join('')}</div></div>`).join('') +
       `<div class="progress"><span>${done} of ${all.length} answered</span><div class="pbar"><i style="width:${(done / all.length) * 100}%"></i></div>
-        <div class="legend"><span><i style="background:var(--accent);border-color:var(--accent)"></i>Answered</span><span><i style="background:var(--flag);border-color:var(--flag);border-radius:50%"></i>For review</span></div></div>`;
+        <div class="legend"><span><i style="background:var(--accent);border-color:var(--accent)"></i>Answered</span><span><i style="background:var(--flag);border-color:var(--flag);border-radius:50%"></i>Come back later</span></div></div>`;
   }
 
   function moneyRef() {
@@ -393,14 +393,17 @@
     if (S.cur === 'intro') {
       q.innerHTML = `<div class="q-meta"><span>${esc(S.paper.title)} · ${esc(S.paper.round)}</span></div><h2>Instructions</h2>
         <ol class="rules q-text" style="font-size:1rem">${S.paper.instructions.map(t => `<li>${t}</li>`).join('')}</ol>${moneyRef()}
-        <div class="q-foot"><span></span><button class="btn primary" type="button" data-nav="next">Start with Problem 1 →</button></div>`;
+        <div class="q-foot"><span></span><button class="btn primary" type="button" data-nav="next">Start: Problem 1 →</button></div>`;
       return;
     }
     const all = problems(); const idx = all.findIndex(p => p.id === S.cur); const p = all[idx];
     let body = '';
     if (p.type === 'mcq') {
-      body = `<div class="opts ${S.locked ? 'locked' : ''}" role="radiogroup" aria-label="Options">${p.options.map((o, i) => { const L = 'ABCDE'[i]; return `
-        <label class="opt"><input type="radio" name="mcq" value="${L}" ${S.answers[p.id] === L ? 'checked' : ''} ${dis}><span class="letter">${L}</span><span>${rich(o)}</span></label>`; }).join('')}</div>
+      // p.perm (if present) is this student's option order: display position d shows original option p.perm[d].
+      // The stored answer is always the original letter, so marking is unaffected by the shuffle.
+      const order = p.perm || p.options.map((_, i) => i);
+      body = `<div class="opts ${S.locked ? 'locked' : ''}" role="radiogroup" aria-label="Options">${order.map((orig, d) => { const shown = 'ABCDE'[d], L = 'ABCDE'[orig]; return `
+        <label class="opt"><input type="radio" name="mcq" value="${L}" data-shown="${shown}" ${S.answers[p.id] === L ? 'checked' : ''} ${dis}><span class="letter">${shown}</span><span>${rich(p.options[orig])}</span></label>`; }).join('')}</div>
         ${S.answers[p.id] && !S.locked ? '<div><button class="linkbtn" type="button" data-clear="1">Clear my choice</button></div>' : ''}`;
     } else if (p.type === 'written') {
       body = p.parts.map(pt => { const k = p.id + pt.id; return `<div class="part"><div class="part-h noselect"><span class="pl">(${pt.id})</span><span>${rich(pt.text)}</span><span class="pm">${pt.marks} mark${pt.marks > 1 ? 's' : ''}</span></div>
@@ -413,16 +416,16 @@
         <div class="ans-meta"><span id="wc"></span></div>`;
     }
     q.innerHTML = `
-      <div class="q-meta"><span>Section ${p.sec.id} · ${esc(p.sec.title)}</span><span>${p.marks} marks</span></div>
+      <div class="q-meta"><span>Section ${p.sec.id} · ${esc(p.sec.title)}</span><span>Problem ${idx + 1} of ${all.length} · ${p.marks} marks</span></div>
       <h2>Problem ${p.id}</h2>
       ${p.sec.money ? moneyRef() : ''}
       ${p.sec.intro && p.id === p.sec.problems[0].id ? `<p class="task noselect" style="margin:0">${p.sec.intro}</p>` : ''}
       ${p.text ? `<div class="q-text">${rich(p.text)}</div>` : ''}
       ${body}
       <div class="q-foot">
-        <button class="btn" type="button" data-nav="prev">← ${idx === 0 ? 'Instructions' : 'Problem ' + all[idx - 1].id}</button>
-        <button class="btn ${S.flags.has(p.id) ? 'flagged' : ''}" type="button" data-flag="${p.id}">${S.flags.has(p.id) ? 'Marked for review' : 'Mark for review'}</button>
-        ${idx < all.length - 1 ? `<button class="btn primary" type="button" data-nav="next">Problem ${all[idx + 1].id} →</button>` : `<button class="btn primary" type="button" data-nav="submit">Review and submit</button>`}
+        <button class="btn" type="button" data-nav="prev">← Previous</button>
+        <button class="btn ${S.flags.has(p.id) ? 'flagged' : ''}" type="button" data-flag="${p.id}" title="Puts an orange dot on this problem's number so you can find it again. It does not affect your marks.">${S.flags.has(p.id) ? '● Marked to come back later (click to remove)' : 'Come back to this later'}</button>
+        ${idx < all.length - 1 ? `<button class="btn primary" type="button" data-nav="next">Next →</button>` : `<button class="btn primary" type="button" data-nav="submit">Review and submit</button>`}
       </div>`;
     updateWc();
     q.querySelectorAll('textarea.ans').forEach(autosize);
@@ -455,7 +458,7 @@
 
   function onChange(e) {
     if (e.target.name === 'mcq' && !S.locked) {
-      S.answers[S.cur] = e.target.value; S.dirty.add(S.cur); log('mc', S.cur, e.target.value);
+      S.answers[S.cur] = e.target.value; S.dirty.add(S.cur); log('mc', S.cur, e.target.value, e.target.dataset.shown || '');
       persistSoon(); setSave('pending'); renderNav(); renderQ();
     }
   }
@@ -593,7 +596,7 @@
     sc.className = 'scrim';
     sc.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="mh">
       <h3 id="mh">Submit your answers?</h3>
-      <p>You have answered <b>${20 - missing.length} of 20</b> problems.${missing.length ? ` Not answered: ${missing.join(', ')}.` : ''}${flagged.length ? ` Marked for review: ${flagged.join(', ')}.` : ''}</p>
+      <p>You have answered <b>${problems().length - missing.length} of ${problems().length}</b> problems.${missing.length ? ` Not answered: ${missing.join(', ')}.` : ''}${flagged.length ? ` You marked to come back to: ${flagged.join(', ')}.` : ''}</p>
       <p class="fine">After you submit you cannot change anything. You still have ${hms(S.end - now())}.</p>
       <div class="row"><button class="btn" type="button" id="mNo">Keep working</button><button class="btn primary" type="button" id="mYes">Submit answers</button></div></div>`;
     document.body.appendChild(sc);
@@ -621,6 +624,7 @@
     for (const p of problems()) {
       lines.push(`==== Problem ${p.id} ====`);
       if (p.type === 'written') for (const pt of p.parts) lines.push(`(${pt.id}) ${S.answers[p.id + pt.id] || ''}`);
+      else if (p.type === 'mcq') { const L = S.answers[p.id]; const i = 'ABCDE'.indexOf(L || '?'); lines.push(i >= 0 ? `Chosen option: ${p.options[i].replace(/<[^>]+>|\$/g, '')} [${L}]` : ''); }
       else lines.push(S.answers[p.id] || '');
       lines.push('');
     }
@@ -635,7 +639,7 @@
   document.addEventListener('click', e => { if (e.target.closest('[data-savefile]')) saveFile(); });
 
   // ---------- demo-only activity panel ----------
-  const EV_NAMES = { k: 'key', in: 'large insert', p: 'paste (own text)', pb: 'paste blocked', cp: 'copy', bl: 'window lost focus', fo: 'window focused', hid: 'tab hidden', vis: 'tab visible', fsx: 'left full screen', fse: 'full screen', go: 'opened problem', mc: 'chose option', fl: 'mark for review', ctx: 'right-click', kb: 'shortcut', rz: 'resized', on: 'online', off: 'offline', ld: 'page loaded', sub: 'submit', exp: 'saved answers to file' };
+  const EV_NAMES = { k: 'key', in: 'large insert', p: 'paste (own text)', pb: 'paste blocked', cp: 'copy', bl: 'window lost focus', fo: 'window focused', hid: 'tab hidden', vis: 'tab visible', fsx: 'left full screen', fse: 'full screen', go: 'opened problem', mc: 'chose option', fl: 'come back later', ctx: 'right-click', kb: 'shortcut', rz: 'resized', on: 'online', off: 'offline', ld: 'page loaded', sub: 'submit', exp: 'saved answers to file' };
   function demoPanel() {
     if (document.getElementById('demoLog')) return;
     const d = document.createElement('aside');
@@ -654,6 +658,18 @@
   }
 
   // ---------- boot ----------
+  // Logos and event text set on the admin page override public/branding.js. Never blocks for long.
+  async function loadBrand() {
+    if (DEMO || window.CR_API) return;
+    try {
+      const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 2500);
+      const r = await fetch('/api/brand', { signal: ctl.signal }); clearTimeout(t);
+      const j = await r.json();
+      for (const k of ['event', 'round', 'details']) if (j.brand?.[k]) B[k] = j.brand[k];
+      if (j.logos?.length) B.logos = j.logos.map(l => ({ src: '/api/brand?logo=' + encodeURIComponent(l.id), alt: l.alt }));
+    } catch { /* keep defaults */ }
+  }
+  await loadBrand();
   if (PREVIEW) {
     // Admin preview: loads the paper with the admin key from /admin; nothing is saved.
     let key = decodeURIComponent((location.hash.match(/k=([^&]+)/) || [])[1] || '');

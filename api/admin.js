@@ -2,15 +2,89 @@
 // Read-only monitor. Bulk exports are done with `npm run export` (too large for a serverless response).
 import { config, db, send, normCode, readBody, genCode, prettyCode } from '../lib/server.js';
 import { PAPER } from '../lib/paper.js';
+import { convert } from '../lib/tex.js';
+import { ensureTables, activePaper, getSetting, setSetting, clearCache } from '../lib/store.js';
 
 export default async function handler(req, res) {
   const key = req.headers['x-admin-key'];
   if (!process.env.ADMIN_KEY || key !== process.env.ADMIN_KEY) return send(res, 401, { error: 'Wrong admin key' });
   try {
-    const sql = db();
-    const cfg = config();
     const url = new URL(req.url, 'http://x');
     const action = url.searchParams.get('action') || 'stats';
+    const minutes = Number(process.env.CONTEST_MINUTES || 150);
+    // The paper, for the admin preview. Falls back to the built-in paper if the database isn't set up.
+    if (action === 'paper') {
+      let paper = PAPER;
+      try { paper = (await activePaper(db())).paper; } catch { }
+      return send(res, 200, { paper, minutes });
+    }
+    const sql = db();
+    const cfg = config();
+
+    // ---- Branding, instructions and paper (for non-technical admins) ----
+    if (action === 'settings') {
+      await ensureTables(sql);
+      const ap = await activePaper(sql);
+      const logos = await sql`select id, alt from logos order by pos, id`;
+      const all = ap.paper.sections.flatMap(x => x.problems);
+      return send(res, 200, {
+        brand: await getSetting(sql, 'brand', {}),
+        instructions: ap.paper.instructions,
+        logos: logos.map(l => ({ id: String(l.id), alt: l.alt })),
+        paper: { source: ap.source, filename: ap.filename, uploadedAt: ap.uploadedAt, title: ap.paper.title, round: ap.paper.round,
+          problems: all.length, marks: all.reduce((t, p) => t + p.marks, 0), mcqKey: Object.keys(ap.key || {}).length },
+        contestLive: cfg.mode === 'live' && Date.now() >= cfg.start - 30 * 60_000 && Date.now() <= cfg.end + cfg.graceMs,
+      });
+    }
+    if (req.method === 'POST' && ['brand-save', 'instructions-save', 'logo-upload', 'logo-delete', 'logo-move', 'paper-upload', 'paper-revert'].includes(action)) {
+      await ensureTables(sql);
+      const b = await readBody(req);
+      // Changing the paper while students are writing would break their answers.
+      const live = cfg.mode === 'live' && Date.now() >= cfg.start - 30 * 60_000 && Date.now() <= cfg.end + cfg.graceMs;
+      if ((action === 'paper-upload' || action === 'paper-revert') && live && !b.force)
+        return send(res, 409, { error: 'The contest is about to start or is running. Changing the paper now would affect students who are writing. Tick "I understand" to do it anyway.' });
+
+      if (action === 'brand-save') {
+        const clean = v => String(v || '').trim().slice(0, 200);
+        await setSetting(sql, 'brand', { event: clean(b.event), round: clean(b.round), details: clean(b.details) });
+        return send(res, 200, { ok: true });
+      }
+      if (action === 'instructions-save') {
+        const lines = String(b.text || '').split('\n').map(l => l.trim()).filter(Boolean).slice(0, 40).map(l => l.slice(0, 1000));
+        await setSetting(sql, 'instructions', lines);
+        return send(res, 200, { ok: true, count: lines.length });
+      }
+      if (action === 'logo-upload') {
+        const m = /^data:(image\/(?:png|jpeg));base64,([A-Za-z0-9+/=]+)$/.exec(String(b.dataUrl || ''));
+        if (!m) return send(res, 400, { error: 'Upload a PNG or JPEG image.' });
+        if (m[2].length > 700_000) return send(res, 400, { error: 'That image is too large even after resizing. Try a smaller file.' });
+        const [{ n }] = await sql`select coalesce(max(pos), 0) + 1 as n from logos`;
+        const [r] = await sql`insert into logos (alt, mime, data, pos) values (${String(b.alt || '').slice(0, 120)}, ${m[1]}, ${m[2]}, ${n}) returning id`;
+        return send(res, 200, { ok: true, id: String(r.id) });
+      }
+      if (action === 'logo-delete') { await sql`delete from logos where id = ${Number(b.id) || 0}`; return send(res, 200, { ok: true }); }
+      if (action === 'logo-move') {
+        const rows = await sql`select id from logos order by pos, id`;
+        const ids = rows.map(r => String(r.id)); const i = ids.indexOf(String(b.id)); const j = i + (b.dir === 'left' ? -1 : 1);
+        if (i >= 0 && j >= 0 && j < ids.length) { [ids[i], ids[j]] = [ids[j], ids[i]]; for (let k = 0; k < ids.length; k++) await sql`update logos set pos = ${k} where id = ${ids[k]}`; }
+        return send(res, 200, { ok: true });
+      }
+      if (action === 'paper-upload') {
+        const tex = String(b.tex || '');
+        if (!tex.includes('\\begin{document}')) return send(res, 400, { error: 'That does not look like a LaTeX file (no \\begin{document}).' });
+        let out;
+        try { out = convert(tex, { instructions: PAPER.instructions, id: String(b.filename || 'uploaded').replace(/\.tex$/i, '') }); }
+        catch (e) { return send(res, 400, { error: 'Could not read the paper: ' + e.message }); }
+        if (!out.summary.problems) return send(res, 400, { error: 'No problems found. Each problem must be inside \\begin{problem}{marks} … \\end{problem}.' });
+        if (b.check) return send(res, 200, { ok: true, checked: true, summary: out.summary, warnings: out.warnings });
+        await sql`update papers set active = false where active`;
+        await sql`insert into papers (filename, tex, paper, key, points, summary, active)
+          values (${String(b.filename || '').slice(0, 200)}, ${tex}, ${sql.json(out.paper)}, ${sql.json(out.key)}, ${sql.json(out.points)}, ${sql.json(out.summary)}, true)`;
+        clearCache();
+        return send(res, 200, { ok: true, summary: out.summary, warnings: out.warnings });
+      }
+      if (action === 'paper-revert') { await sql`update papers set active = false where active`; clearCache(); return send(res, 200, { ok: true }); }
+    }
 
     if (action === 'stats') {
       const [r] = await sql`
@@ -58,8 +132,6 @@ export default async function handler(req, res) {
       return send(res, 500, { error: 'Could not create a code, try again.' });
     }
 
-    // The paper, for the admin preview.
-    if (action === 'paper') return send(res, 200, { paper: PAPER, minutes: cfg.minutes });
 
     if (action === 'devices') {
       const rows = await sql`
