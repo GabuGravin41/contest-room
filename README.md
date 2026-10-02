@@ -141,6 +141,106 @@ Students see changes within a minute. `public/branding.js` holds the defaults th
 
 Each student sees the options of every multiple-choice problem in their own fixed order, so a message like "the answer to 3 is B" is useless. Answers are stored as the original letters from the .tex file, so marking and the answer key are unaffected. The emergency answer file records the chosen option's text. To turn shuffling off, set `SHUFFLE_MCQ=0` in Vercel.
 
+## Students and codes (admin page)
+
+**Students and codes → Import students from CSV.** Save the spreadsheet as CSV with the columns `name, school, county, candidate_no`, and optionally `extra_minutes`. Every student gets a code, and a file downloads with each code and a ready-to-send message. In live mode the message includes the start time.
+
+Example message: "Amina Wanjiru: your Kenya Informatics Olympiad contest code is KIO-7F3K-Q9PX. Go to https://… on Sat 10 Oct, 09:00 EAT and enter the code. Keep it private."
+
+Use it for mail-merge, bulk SMS, or a list per school. **Download all codes** gives the full list at any time, including who has entered and who has submitted.
+
+## Extra time
+
+For students with access arrangements: set `extra_minutes` in the import file, or open the student under **Find a student** and use **Save extra time**. Their paper closes that many minutes later than everyone else's, and their waiting screen says so.
+
+## Announcements during the contest
+
+**Announcement to all students** on the admin page: type a correction and click **Publish**. It appears at the top of every student's page within about 2 minutes (it rides on the regular autosave, so it adds no server load) and on the waiting screen. Remove it when it no longer applies.
+
+## Practice mode and the real paper
+
+In practice mode (`CONTEST_MODE=practice`) students get a short **sample paper** by default, so demo and rehearsal codes never reveal the real problems. If you want to rehearse with the real paper (for example, a closed run with the team), switch it under **Paper** on the admin page.
+
+## Marking (Sections B and C)
+
+Open `/mark`, enter your name and the **marker key** (`MARKER_KEY` in Vercel; the admin key also works).
+
+- **Choose a problem.** You get one student's answer at a time, with no name, school or code shown. Pick a mark (halves allowed), add a comment if useful, then click **Save and next** (or press Enter). Each script goes to one marker at a time; an unsaved script is released after 15 minutes. **My recent marks** lets you re-open and correct a script.
+- **Section A cut-off (admin only):** an admin can set a minimum Section A score, so only those students' written answers are marked.
+- **Results:** `npm run export` writes `out/results.csv`, ranked, with the Section A score, every problem's mark and the total. Use the marking scheme PDF for the mark allocation.
+
+## Ready for the contest? (admin page)
+
+The panel at the top of `/admin` checks:
+- live mode and the start time;
+- the paper and the Section A answer key;
+- students registered, and no leftover test data;
+- fallback email set;
+- admin key length, and a separate marker key;
+- old announcements;
+- database size.
+
+Everything should show ✓ before contest day.
+
+## Safety tools and data protection
+
+**Safety tools** at the bottom of `/admin`:
+- **Clear test entries** removes answers, logs and marks from demos and rehearsals, and keeps students and codes. Do this after the final rehearsal.
+- **Clear everything** also removes students and codes.
+- **Erase activity logs** removes keystroke logs and IP/browser details but keeps answers and marks. Use it once results are final and reviews are closed, as the privacy notice promises.
+
+Clearing is switched off from 30 minutes before the live contest until 4 hours after it ends. After a live contest, deleting results also requires typing `DELETE RESULTS`.
+
+The privacy notice students can read is at `/privacy` (linked from the code-entry screen). Have it checked by whoever handles KIO's legal side; Kenya's Data Protection Act 2019 applies, and most students are minors.
+
+## Load test (do this a week before)
+
+With the site in practice mode and `DATABASE_URL` in your `.env`:
+```powershell
+npm run loadtest -- --url https://your-site.vercel.app --students 1000 --minutes 3
+```
+It creates temporary students, has them all enter over 15 seconds (like the real start) and save every 30 seconds, then reports response times and errors and deletes the temporary students. Start with 300, then 1000, then 2000.
+- **"handled this load comfortably":** you're fine.
+- **Errors or slow responses:** consider Vercel Pro for the contest month, a larger Neon compute size, or a higher `SYNC_SECONDS`.
+
+Each run uses about `students × (1 + minutes × 2)` requests of your Vercel allowance.
+
+## Contest-day runbook
+
+**A week before**
+- Run the load test.
+- Hold the rehearsal.
+- Upload the final .tex and check it with **Preview**.
+- Import students and send codes.
+- Set up the Google Drive backup.
+
+**The day before**
+- Clear test entries (**Safety tools**).
+- Set `CONTEST_MODE=live` and the real `CONTEST_START` in Vercel, then **redeploy**.
+- Check that **Ready for the contest?** is all ✓.
+
+**30 minutes before**
+- Open `/admin`. This also wakes the database.
+- Agree roles:
+  - one person watches `/admin`;
+  - one handles lost codes (**Find a student** / **Issue a new code**);
+  - one answers the fallback email;
+  - one decides on announcements.
+
+**During**
+- Watch **Active** and **Submitted**.
+- Publish corrections as announcements.
+- Don't change the paper.
+
+**Right after**
+- Create a **Neon branch** (Neon dashboard → Branches → Create) as an unchangeable copy of the results.
+- Run `npm run export` and `npm run flags`.
+- Remove any announcement.
+
+**After results are final**
+- Use **Erase activity logs**.
+- Change `ADMIN_KEY` and `MARKER_KEY` in Vercel.
+
 ## Checking for cheating
 
 After the contest (or during it), run:
@@ -182,13 +282,15 @@ api/join.js     code check, waiting room, session token, paper delivery
 api/sync.js     autosave + activity log (idempotent; stale-device and late flags)
 api/admin.js    monitor, search, issue codes, preview, paper/logo/instructions uploads, backups (x-admin-key)
 api/brand.js    public: event name and logos for the student page
+api/mark.js     marking (MARKER_KEY), anonymous scripts
 paper/round1.tex   built-in paper (LaTeX); lib/paper.js and lib/key.js are generated from it
 lib/tex.js      LaTeX → online paper converter
 lib/store.js    uploaded paper, settings, logos
 lib/shuffle.js  per-student MCQ option order
+lib/sample-paper.js  sample paper used in practice mode
 public/branding.js event name, round, logos
 lib/server.js   config, DB pool, helpers
-public/         index.html, app.js, styles.css, admin.html
-scripts/        schema.sql, setup-db.js, add-students.js, export.js, flags.js, tex-to-paper.js, build-demo.js
+public/         index.html, app.js, styles.css, admin.html, mark.html, privacy.html
+scripts/        schema.sql, setup-db.js, add-students.js, export.js, flags.js, loadtest.js, tex-to-paper.js, build-demo.js
 dev-server.js   local stand-in for Vercel
 ```

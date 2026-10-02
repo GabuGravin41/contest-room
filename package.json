@@ -12,7 +12,8 @@
     "export": "node --env-file=.env scripts/export.js",
     "demo": "node scripts/build-demo.js",
     "paper": "node scripts/tex-to-paper.js paper/round1.tex",
-    "flags": "node --env-file=.env scripts/flags.js"
+    "flags": "node --env-file=.env scripts/flags.js",
+    "loadtest": "node --env-file=.env scripts/loadtest.js"
   },
   "dependencies": {
     "postgres": "3.4.9"

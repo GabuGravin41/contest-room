@@ -63,3 +63,7 @@ create table if not exists papers (
 create table if not exists settings (key text primary key, value jsonb, updated_at timestamptz default now());
 create table if not exists logos (
   id bigserial primary key, alt text, mime text, data text, pos int default 0, created_at timestamptz default now());
+alter table students add column if not exists extra_minutes int default 0;
+create table if not exists marks (
+  code text not null, problem text not null, score numeric, comment text, marker text,
+  claimed_by text, claimed_at timestamptz, updated_at timestamptz default now(), primary key (code, problem));

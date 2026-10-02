@@ -147,6 +147,7 @@
     try {
       const r = await api('sync', { code: S.code, token: S.token, ...S.pending });
       setClock(r.serverNow, t0, Date.now());
+      if ('announcement' in r) showAnnouncement(r.announcement);
       const wasFinal = S.pending.final;
       S.pending = null; S.lastSaved = now(); S.failSince = null; persist();
       const eb = document.getElementById('ebanner'); if (eb) eb.hidden = true;
@@ -213,7 +214,8 @@
         <p class="err" id="joinErr" role="alert">${esc(err)}</p>
         <button class="btn primary" id="joinBtn" type="submit">Enter the contest room</button>
       </form>
-      <p class="fine">Use the code sent to you. If your page reloads or your connection drops, enter the same code on the same device to carry on where you left off.</p>`);
+      <p class="fine">Use the code sent to you. If your page reloads or your connection drops, enter the same code on the same device to carry on where you left off.</p>
+      ${PREVIEW || DEMO ? '' : '<p class="fine"><a href="/privacy" target="_blank" rel="noopener">How your information is used</a></p>'}`);
     const inp = document.getElementById('code');
     inp.addEventListener('input', () => { const p = inp.selectionStart === inp.value.length; inp.value = prettyCode(inp.value); if (p) inp.selectionStart = inp.selectionEnd = inp.value.length; });
     document.getElementById('joinForm').addEventListener('submit', e => { e.preventDefault(); join(inp.value); });
@@ -237,7 +239,7 @@
       return;
     }
     setClock(r.serverNow, t0, Date.now());
-    Object.assign(S, { code, student: r.student, start: r.start, end: r.end, syncSeconds: r.syncSeconds || 60, fallbackEmail: r.fallbackEmail || '', mode: r.mode });
+    Object.assign(S, { code, student: r.student, start: r.start, end: r.end, syncSeconds: r.syncSeconds || 60, fallbackEmail: r.fallbackEmail || '', mode: r.mode, extraMinutes: r.extraMinutes || 0, announcement: r.announcement || null });
     store.set('cr:last', code);
     if (r.status === 'waiting') return screenWaiting();
     if (r.status === 'submitted') { S.submitted = true; return screenDone('submitted', r.submittedAt); }
@@ -262,11 +264,12 @@
       <div><div class="eyebrow">Waiting room</div></div>
       <h1>The paper opens at ${esc(eat(S.start))}</h1>
       <p class="sub">${esc(eatDate(S.start))}</p>
+      ${S.announcement?.text ? `<div class="banner ann" style="border-radius:6px"><span><b>Announcement:</b> ${esc(S.announcement.text)}</span></div>` : ''}
       ${whoCard()}
       <div class="field"><span class="eyebrow">Opens in</span><div class="count" id="count">--:--:--</div></div>
       <ul class="rules">
         <li>Keep this page open. The paper appears here automatically at the start time.</li>
-        <li>You have 2 hours 30 minutes. The clock is the same for everyone and does not pause.</li>
+        <li>You have ${esc(duration(S.end - S.start))}${S.extraMinutes ? `, including ${S.extraMinutes} minutes of extra time arranged for you` : ''}. The clock does not pause. Your paper closes at ${esc(eat(S.end))}.</li>
         <li>Answers save as you work. Stay on this page: leaving it, switching tabs and pasting text are recorded.</li>
         <li>Use one device only. Opening your code somewhere else locks this window.</li>
       </ul>
@@ -330,6 +333,7 @@
     startSyncLoop();
     bindGlobal();
     if (S.finalRequested) requestFinal();
+    showAnnouncement(S.announcement);
     if (now() >= S.end) timeUp();
   }
 
@@ -346,6 +350,7 @@
           <div class="bar-l">${logos('small')}${brand}<div class="who"><b>${esc(s.name || '')}</b>${s.school ? ' · ' + esc(s.school) : ''} · <span style="font-family:var(--mono)">${esc(prettyCode(S.code))}</span></div></div>
           <div class="bar-r"><span class="save" id="save" aria-live="polite">Saved</span><div class="timer" id="timer" aria-label="Time remaining">--:--:--</div><button class="btn primary" id="submitBtn" type="button">Submit</button></div>
         </header></div>
+        <div class="banner ann" id="nbanner" hidden></div>
         <div class="banner" id="banner" hidden></div>
         <div class="banner" id="ebanner" hidden><span>We can't reach the server. Your answers are safe on this device and will send when the connection returns.</span><button class="btn" type="button" data-savefile>Save a copy of my answers</button></div>
         <div class="layout">
@@ -403,7 +408,7 @@
       // The stored answer is always the original letter, so marking is unaffected by the shuffle.
       const order = p.perm || p.options.map((_, i) => i);
       body = `<div class="opts ${S.locked ? 'locked' : ''}" role="radiogroup" aria-label="Options">${order.map((orig, d) => { const shown = 'ABCDE'[d], L = 'ABCDE'[orig]; return `
-        <label class="opt"><input type="radio" name="mcq" value="${L}" data-shown="${shown}" ${S.answers[p.id] === L ? 'checked' : ''} ${dis}><span class="letter">${shown}</span><span>${rich(p.options[orig])}</span></label>`; }).join('')}</div>
+        <label class="opt ${S.answers[p.id] === L ? 'sel' : ''}"><input type="radio" name="mcq" value="${L}" data-shown="${shown}" ${S.answers[p.id] === L ? 'checked' : ''} ${dis}><span class="letter">${shown}</span><span>${rich(p.options[orig])}</span></label>`; }).join('')}</div>
         ${S.answers[p.id] && !S.locked ? '<div><button class="linkbtn" type="button" data-clear="1">Clear my choice</button></div>' : ''}`;
     } else if (p.type === 'written') {
       body = p.parts.map(pt => { const k = p.id + pt.id; return `<div class="part"><div class="part-h noselect"><span class="pl">(${pt.id})</span><span>${rich(pt.text)}</span><span class="pm">${pt.marks} mark${pt.marks > 1 ? 's' : ''}</span></div>
@@ -565,6 +570,18 @@
     if (fn) document.getElementById('bannerBtn').onclick = fn;
   }
 
+  // Announcements from the organisers (e.g. a correction) arrive with every save and on entry.
+  function showAnnouncement(a) {
+    S.announcement = a;
+    const el = document.getElementById('nbanner'); if (!el) return;
+    if (!a || !a.text) { el.hidden = true; return; }
+    el.innerHTML = `<span><b>Announcement from the organisers</b> (${esc(eat(a.at))}): ${esc(a.text)}</span>`;
+    el.hidden = false;
+    const seenKey = 'cr:ann:' + S.code;
+    if ((store.get(seenKey) || 0) < a.at) { store.set(seenKey, a.at); toast('New announcement from the organisers. It is shown at the top of the page.', 8000); log('ann', S.cur); }
+  }
+  const duration = ms => { const m = Math.round(ms / 60000), h = Math.floor(m / 60), r = m % 60; return [h && `${h} hour${h > 1 ? 's' : ''}`, r && `${r} minutes`].filter(Boolean).join(' '); };
+
   function setSave(state) {
     const el = document.getElementById('save'); if (!el) return;
     el.className = 'save ' + (state === 'saved' ? '' : state === 'offline' ? 'offline' : 'saving');
@@ -639,7 +656,7 @@
   document.addEventListener('click', e => { if (e.target.closest('[data-savefile]')) saveFile(); });
 
   // ---------- demo-only activity panel ----------
-  const EV_NAMES = { k: 'key', in: 'large insert', p: 'paste (own text)', pb: 'paste blocked', cp: 'copy', bl: 'window lost focus', fo: 'window focused', hid: 'tab hidden', vis: 'tab visible', fsx: 'left full screen', fse: 'full screen', go: 'opened problem', mc: 'chose option', fl: 'come back later', ctx: 'right-click', kb: 'shortcut', rz: 'resized', on: 'online', off: 'offline', ld: 'page loaded', sub: 'submit', exp: 'saved answers to file' };
+  const EV_NAMES = { k: 'key', in: 'large insert', p: 'paste (own text)', pb: 'paste blocked', cp: 'copy', bl: 'window lost focus', fo: 'window focused', hid: 'tab hidden', vis: 'tab visible', fsx: 'left full screen', fse: 'full screen', go: 'opened problem', mc: 'chose option', fl: 'come back later', ctx: 'right-click', kb: 'shortcut', rz: 'resized', on: 'online', off: 'offline', ld: 'page loaded', sub: 'submit', exp: 'saved answers to file', ann: 'saw announcement' };
   function demoPanel() {
     if (document.getElementById('demoLog')) return;
     const d = document.createElement('aside');

@@ -1,13 +1,15 @@
-// GET /api/admin?action=stats | student&code=... | devices    (header: x-admin-key)
-// Read-only monitor. Bulk exports are done with `npm run export` (too large for a serverless response).
-import { config, db, send, normCode, readBody, genCode, prettyCode } from '../lib/server.js';
+// /api/admin?action=...   (header: x-admin-key). Monitor, students and codes, contest content, safety tools.
+// Bulk exports of answers and logs are done with `npm run export` (too large for a serverless response).
+import { config, db, send, normCode, readBody, genCode, prettyCode, keyOk } from '../lib/server.js';
 import { PAPER } from '../lib/paper.js';
 import { convert } from '../lib/tex.js';
 import { ensureTables, activePaper, getSetting, setSetting, clearCache } from '../lib/store.js';
 
+const LIVE_WINDOW = cfg => cfg.mode === 'live' && Date.now() >= cfg.start - 30 * 60_000 && Date.now() <= cfg.end + 4 * 3600_000;
+
 export default async function handler(req, res) {
-  const key = req.headers['x-admin-key'];
-  if (!process.env.ADMIN_KEY || key !== process.env.ADMIN_KEY) return send(res, 401, { error: 'Wrong admin key' });
+  if (!process.env.ADMIN_KEY) return send(res, 500, { error: 'ADMIN_KEY is not set in Vercel.' });
+  if (!(await keyOk(req.headers['x-admin-key'], process.env.ADMIN_KEY))) return send(res, 401, { error: 'Wrong admin key' });
   try {
     const url = new URL(req.url, 'http://x');
     const action = url.searchParams.get('action') || 'stats';
@@ -34,8 +36,100 @@ export default async function handler(req, res) {
         paper: { source: ap.source, filename: ap.filename, uploadedAt: ap.uploadedAt, title: ap.paper.title, round: ap.paper.round,
           problems: all.length, marks: all.reduce((t, p) => t + p.marks, 0), mcqKey: Object.keys(ap.key || {}).length },
         contestLive: cfg.mode === 'live' && Date.now() >= cfg.start - 30 * 60_000 && Date.now() <= cfg.end + cfg.graceMs,
+        mode: cfg.mode, practicePaper: await getSetting(sql, 'practicePaper', 'sample'),
+        announcement: await getSetting(sql, 'announcement', null),
       });
     }
+
+    // ---- Readiness checklist for contest day ----
+    if (action === 'readiness') {
+      await ensureTables(sql);
+      const ap = await activePaper(sql);
+      const mcqs = ap.paper.sections.flatMap(x => x.problems).filter(p => p.type === 'mcq');
+      const missing = mcqs.filter(p => !(ap.key || {})[p.id]).map(p => p.id);
+      const [c] = await sql`select (select count(*) from students)::int as students, (select count(*) from sessions)::int as sessions,
+        (select count(*) from logs)::int as logs, (select count(*) from marks)::int as marks,
+        (select pg_database_size(current_database()))::bigint as bytes`;
+      const ann = await getSetting(sql, 'announcement', null);
+      const now = Date.now(), adminKey = process.env.ADMIN_KEY || '', markerKey = process.env.MARKER_KEY || '';
+      const fmt = t => new Date(t).toLocaleString('en-GB', { timeZone: 'Africa/Nairobi', dateStyle: 'medium', timeStyle: 'short' }) + ' EAT';
+      const checks = [
+        cfg.mode === 'live' ? { ok: true, label: 'Live mode is on' } : { ok: false, label: 'Practice mode is on', detail: 'Set CONTEST_MODE=live in Vercel and redeploy before the contest.' },
+        cfg.mode === 'live' && cfg.start > now ? { ok: true, label: `Start time: ${fmt(cfg.start)}`, detail: `Ends ${fmt(cfg.end)} (${cfg.minutes} minutes).` }
+          : cfg.mode === 'live' && now <= cfg.end ? { ok: true, label: 'The contest is running', detail: `Ends ${fmt(cfg.end)}.` }
+          : { ok: false, label: 'Start time', detail: cfg.mode === 'live' ? 'CONTEST_START is in the past. Set the real start time in Vercel and redeploy.' : 'Set CONTEST_START (e.g. 2026-10-10T09:00:00+03:00) in Vercel.' },
+        { ok: ap.source === 'uploaded' || ap.paper.sections.length > 0, label: `Paper: ${ap.paper.title} · ${ap.paper.round}`, detail: ap.source === 'uploaded' ? `Uploaded ${fmt(ap.uploadedAt)} from ${ap.filename || 'a .tex file'}.` : 'Built-in paper from the repository. Upload the final .tex if it has changed.' },
+        missing.length ? { ok: false, label: 'Section A answer key incomplete', detail: `No answer for problems ${missing.join(', ')}.` } : { ok: true, label: `Section A answer key complete (${mcqs.length} problems)` },
+        { ok: c.students > 0, label: `${c.students} students registered`, detail: c.students ? '' : 'Import the student list under Students and codes.' },
+        cfg.mode === 'live' && cfg.start > now && (c.sessions || c.logs)
+          ? { ok: false, label: 'Test data present', detail: `${c.sessions} students have already entered and ${c.logs} log batches exist, from demos or rehearsals. Clear them under Safety tools.` }
+          : { ok: true, label: 'No leftover test data', detail: '' },
+        process.env.FALLBACK_EMAIL ? { ok: true, label: `Fallback email: ${process.env.FALLBACK_EMAIL}` } : { ok: false, label: 'No fallback email', detail: 'Set FALLBACK_EMAIL in Vercel so students know where to send saved answers if the site is down.' },
+        adminKey.length >= 20 ? { ok: true, label: 'Admin key is long enough' } : { ok: false, label: 'Admin key is short', detail: 'Use at least 20 random characters for ADMIN_KEY.' },
+        markerKey && markerKey !== adminKey ? { ok: true, label: 'Separate marker key is set' } : { ok: 'warn', label: 'No separate marker key', detail: 'Set MARKER_KEY in Vercel so markers can mark without admin access.' },
+        ann?.text ? { ok: 'warn', label: 'An announcement is showing', detail: `"${ann.text}". Clear it if it is old.` } : { ok: true, label: 'No announcement showing' },
+        { ok: Number(c.bytes) < 400e6 ? true : 'warn', label: `Database size ${(Number(c.bytes) / 1e6).toFixed(0)} MB`, detail: Number(c.bytes) < 400e6 ? '' : 'Close to the 0.5 GB free limit.' },
+      ];
+      return send(res, 200, { checks });
+    }
+
+    // ---- All students with codes (for mail-merge / SMS) ----
+    if (action === 'codes') {
+      const rows = await sql`select s.code, s.name, s.school, s.county, s.candidate_no, s.extra_minutes, x.first_join_at, x.submitted_at
+        from students s left join sessions x using (code) order by s.school, s.name`;
+      return send(res, 200, { rows: rows.map(r => ({ ...r, pretty: prettyCode(r.code) })), start: cfg.start, mode: cfg.mode });
+    }
+    if (req.method === 'POST' && ['announce', 'practice-paper', 'extra-time', 'import', 'reset'].includes(action)) {
+      await ensureTables(sql);
+      const b = await readBody(req);
+      if (action === 'announce') {
+        const text = String(b.text || '').trim().slice(0, 500);
+        await setSetting(sql, 'announcement', text ? { text, at: Date.now() } : { text: '', at: Date.now() });
+        return send(res, 200, { ok: true });
+      }
+      if (action === 'practice-paper') {
+        await setSetting(sql, 'practicePaper', b.which === 'real' ? 'real' : 'sample');
+        return send(res, 200, { ok: true });
+      }
+      if (action === 'extra-time') {
+        const m = Math.max(0, Math.min(240, Math.round(Number(b.minutes) || 0)));
+        const r = await sql`update students set extra_minutes = ${m} where code = ${normCode(b.code)} returning code`;
+        if (!r.length) return send(res, 404, { error: 'No student with that code' });
+        return send(res, 200, { ok: true, minutes: m });
+      }
+      if (action === 'import') {
+        const rows = Array.isArray(b.rows) ? b.rows.slice(0, 1000) : [];
+        const out = [];
+        for (const p of rows) {
+          const name = String(p.name || '').trim().slice(0, 200);
+          if (!name) continue;
+          for (let i = 0; i < 5; i++) {
+            const code = genCode();
+            const r = await sql`insert into students (code, name, school, county, candidate_no, extra_minutes)
+              values (${code}, ${name}, ${String(p.school || '').trim() || null}, ${String(p.county || '').trim() || null},
+                      ${String(p.candidate_no || '').trim() || null}, ${Math.max(0, Math.min(240, Number(p.extra_minutes) || 0))})
+              on conflict do nothing returning code`;
+            if (r.length) { out.push({ ...p, name, code: prettyCode(code) }); break; }
+          }
+        }
+        return send(res, 200, { ok: true, created: out });
+      }
+      if (action === 'reset') {
+        if (LIVE_WINDOW(cfg)) return send(res, 409, { error: 'Clearing data is switched off from 30 minutes before the start until 4 hours after the end of the live contest.' });
+        const scope = ['activity', 'students', 'logs-only'].includes(b.scope) ? b.scope : 'activity';
+        const afterLive = cfg.mode === 'live' && Date.now() > cfg.end && scope !== 'logs-only';
+        const need = afterLive ? 'DELETE RESULTS' : 'DELETE';
+        if (b.confirm !== need) return send(res, 400, { error: afterLive ? 'The live contest has ended, so this would delete real results. Type DELETE RESULTS to confirm.' : 'Type DELETE to confirm.' });
+        if (scope === 'logs-only') {
+          await sql`update logs set events = null, answers = null`; await sql`update joins set ip = null, ua = null`;
+          return send(res, 200, { ok: true, cleared: 'Activity logs and IP/browser details erased. Answers and marks kept.' });
+        }
+        await sql`delete from marks`; await sql`delete from logs`; await sql`delete from joins`; await sql`delete from sessions`;
+        if (scope === 'students') await sql`delete from students`;
+        return send(res, 200, { ok: true, cleared: scope === 'students' ? 'All students, codes, answers, logs and marks deleted.' : 'All answers, logs, joins and marks deleted. Students and codes kept.' });
+      }
+    }
+
     if (req.method === 'POST' && ['brand-save', 'instructions-save', 'logo-upload', 'logo-delete', 'logo-move', 'paper-upload', 'paper-revert'].includes(action)) {
       await ensureTables(sql);
       const b = await readBody(req);

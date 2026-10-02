@@ -1,7 +1,7 @@
 // POST /api/sync  { code, token, seq, ans:{key:value}, ev:"compact events", base, clientNow, snap, final }
 // Saves changed answers and appends one activity-log batch. Idempotent per (code, token, seq).
 import { config, windowFor, db, readBody, send, normCode } from '../lib/server.js';
-import { activePaper } from '../lib/store.js';
+import { ensureTables, servedPaper, cachedSetting } from '../lib/store.js';
 
 const MAX_ANSWER = 20000;       // characters per answer box
 const MAX_EVENTS = 1_500_000;   // characters of log per batch
@@ -18,16 +18,18 @@ export default async function handler(req, res) {
     const now = Date.now();
     if (!code || !tok || seq < 0) return send(res, 400, { error: 'Bad request' });
 
-    const [s] = await sql`select active_token, submitted_at, first_join_at from sessions where code = ${code}`;
+    await ensureTables(sql);
+    const [s] = await sql`select x.active_token, x.submitted_at, x.first_join_at, st.extra_minutes
+      from sessions x join students st using (code) where x.code = ${code}`;
     if (!s) return send(res, 404, { error: 'Unknown session' });
 
     const stale = s.active_token !== tok;          // code was opened on another device later
-    const w = windowFor(cfg, s.first_join_at, now);
+    const w = windowFor(cfg, s.first_join_at, now, s.extra_minutes);
     const late = now > w.end;
     const closed = now > w.end + cfg.graceMs;
     const final = !!b.final;
 
-    const { answerKeys } = await activePaper(sql);
+    const { answerKeys } = await servedPaper(sql, cfg);
     const ans = {};
     if (b.ans && typeof b.ans === 'object') {
       for (const [k, v] of Object.entries(b.ans)) {
@@ -58,7 +60,8 @@ export default async function handler(req, res) {
       if (final) submitted = true;
     }
 
-    return send(res, 200, { ok: true, serverNow: now, superseded: stale, closed, submitted, end: w.end });
+    return send(res, 200, { ok: true, serverNow: now, superseded: stale, closed, submitted, end: w.end,
+      announcement: await cachedSetting(sql, 'announcement', null) });
   } catch (e) {
     console.error(e);
     return send(res, 500, { error: 'Server error' });

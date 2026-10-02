@@ -8,7 +8,7 @@
 // for doubtful high scorers ask them to explain one of their answers.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { db, config, prettyCode } from '../lib/server.js';
-import { activePaper } from '../lib/store.js';
+import { servedPaper } from '../lib/store.js';
 import { permFor, shuffleOn } from '../lib/shuffle.js';
 import { toCSV } from './csv.js';
 
@@ -16,7 +16,7 @@ const sql = db();
 const cfg = config();
 mkdirSync('out', { recursive: true });
 
-const AP = await activePaper(sql);
+const AP = await servedPaper(sql, cfg);
 const PAPER = AP.paper, MCQ_KEY = AP.key || {};
 const problems = PAPER.sections.flatMap(s => s.problems);
 const MCQS = problems.filter(p => p.type === 'mcq');

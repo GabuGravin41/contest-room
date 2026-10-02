@@ -2,7 +2,7 @@
 // Before the start: returns the waiting-room info (no paper).
 // During the window: issues/resumes a session token and returns the paper + saved answers.
 import { config, windowFor, db, readBody, send, clientInfo, normCode, token as newToken } from '../lib/server.js';
-import { activePaper } from '../lib/store.js';
+import { ensureTables, servedPaper, cachedSetting } from '../lib/store.js';
 import { paperFor } from '../lib/shuffle.js';
 
 export default async function handler(req, res) {
@@ -15,16 +15,18 @@ export default async function handler(req, res) {
     const now = Date.now();
     
     if (code.length < 6) return send(res, 400, { error: 'Enter the contest code you were sent.' });
+    await ensureTables(sql);
 
     const [row] = await sql`
-      select s.code, s.name, s.school, s.county, s.candidate_no,
+      select s.code, s.name, s.school, s.county, s.candidate_no, s.extra_minutes,
              x.active_token, x.submitted_at, x.answers, x.first_join_at
       from students s left join sessions x on x.code = s.code
       where s.code = ${code}`;
     if (!row) return send(res, 404, { error: 'We could not find that code. Check it against the message you were sent.' });
 
-    const w = windowFor(cfg, row.first_join_at, now);
-    const base = { serverNow: now, start: w.start, end: w.end, syncSeconds: cfg.syncSeconds, mode: cfg.mode, fallbackEmail: cfg.fallbackEmail };
+    const w = windowFor(cfg, row.first_join_at, now, row.extra_minutes);
+    const base = { serverNow: now, start: w.start, end: w.end, syncSeconds: cfg.syncSeconds, mode: cfg.mode, fallbackEmail: cfg.fallbackEmail,
+      extraMinutes: row.extra_minutes || 0, announcement: await cachedSetting(sql, 'announcement', null) };
     const student = { name: row.name, school: row.school, county: row.county, candidateNo: row.candidate_no, code };
 
     if (row.submitted_at) return send(res, 200, { ...base, status: 'submitted', student, submittedAt: +new Date(row.submitted_at) });
@@ -52,7 +54,7 @@ export default async function handler(req, res) {
 
     return send(res, 200, {
       ...base, status: 'open', student, token: tok, kind,
-      paper: paperFor((await activePaper(sql)).paper, code), answers: row.answers || {},
+      paper: paperFor((await servedPaper(sql, cfg)).paper, code), answers: row.answers || {},
     });
   } catch (e) {
     console.error(e);

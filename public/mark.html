@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contest Room Marking</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+<link rel="stylesheet" href="/styles.css">
+<style>
+  .wrap { max-width: 60rem; margin: 0 auto; padding: 1.5rem 16px 4rem; display: grid; gap: 1.2rem; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 1rem; display: grid; gap: .8rem; min-width: 0; }
+  .panel h2 { margin: 0; font-size: 1rem; }
+  input.t { padding: .5rem .7rem; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); min-width: 0; }
+  .prob { display: grid; grid-template-columns: 1fr 12rem auto; gap: 1rem; align-items: center; padding: .6rem 0; border-top: 1px solid var(--line); }
+  .prob:first-child { border-top: 0; }
+  .prob .fine { margin: 0; }
+  .ans-block { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: .8rem; font-size: .98rem; line-height: 1.55; min-height: 3rem; }
+  .ans-block.empty { color: var(--muted); font-style: italic; }
+  .scores { display: flex; flex-wrap: wrap; gap: .35rem; }
+  .scores button { min-width: 2.6rem; }
+  .scores button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .mono { font-family: var(--mono); }
+  @media (max-width: 640px) { .prob { grid-template-columns: 1fr; gap: .4rem; } }
+</style>
+</head>
+<body>
+<div class="flagline"></div>
+<div class="wrap">
+  <div class="row" style="justify-content:space-between">
+    <div class="brand"><span class="dot"></span>The Contest Room · Marking</div>
+    <form id="kf" class="row"><input class="t" id="mname" placeholder="Your name" autocomplete="name" required><input class="t" id="key" type="password" placeholder="Marker key" autocomplete="current-password"><button class="btn">Start</button></form>
+  </div>
+  <p class="err" id="err"></p>
+  <div id="overview" hidden>
+    <div class="panel">
+      <h2 id="ptitle">Problems to mark</h2>
+      <p class="fine" style="margin:0">You see answers without names, schools or codes. Each script is given to one marker at a time. Use the marking scheme for the mark allocation.</p>
+      <div id="cut" class="row" hidden><span class="fine">Only mark students with a Section A score of at least</span><input class="t" id="minA" type="number" min="0" step="1" style="width:5rem"><button class="btn" type="button" id="cutSave">Save</button><span class="fine" id="cutMsg"></span></div>
+      <div id="plist"></div>
+    </div>
+  </div>
+  <div id="marking" hidden>
+    <div class="row" style="justify-content:space-between"><button class="btn" type="button" id="back">← All problems</button><span class="fine" id="remain"></span></div>
+    <div class="panel">
+      <div class="q-meta"><span id="mhead"></span><span id="mlabel" class="mono"></span></div>
+      <div class="q-text" id="statement" style="user-select:text"></div>
+    </div>
+    <div class="panel" id="answers"></div>
+    <div class="panel">
+      <h2>Mark</h2>
+      <div class="scores" id="scores"></div>
+      <div class="row"><input class="t" id="score" type="number" min="0" step="0.5" style="width:6rem" aria-label="Mark"><span class="fine" id="outof"></span></div>
+      <textarea class="t" id="comment" rows="2" placeholder="Comment (optional, for moderation)" style="width:100%;font:inherit"></textarea>
+      <div class="row"><button class="btn primary" type="button" id="save">Save and next</button><button class="btn" type="button" id="skip">Skip this script</button><span class="err" id="merr"></span></div>
+    </div>
+    <details class="panel"><summary>My recent marks for this problem</summary><div id="mine"></div></details>
+  </div>
+</div>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // ---------- inline maths: a small TeX subset inside $...$ ----------
+  const SYM = { le: '≤', ge: '≥', ne: '≠', cdot: '·', times: '×', oplus: '⊕', leftrightarrow: '↔', mid: '∣', to: '→' };
+  const PLAIN = { dots: '…', ldots: '…', pounds: '£', lceil: '⌈', rceil: '⌉', omega: 'ω', infty: '∞' };
+  const OPS = new Set(['gcd', 'max', 'min', 'log', 'lcm']);
+  function tex(s) {
+    let i = 0;
+    const raw = () => { while (s[i] === ' ') i++; if (s[i] !== '{') return s[i++] || ''; let d = 0, r = ''; i++; while (i < s.length) { if (s[i] === '{') d++; if (s[i] === '}' && d-- === 0) break; r += s[i++]; } i++; return r; };
+    function atom() {
+      const c = s[i];
+      if (c === '{') { i++; let r = ''; while (i < s.length && s[i] !== '}') r += atom(); i++; return r; }
+      if (c === '\\') {
+        i++; let name = '';
+        while (i < s.length && /[a-zA-Z]/.test(s[i])) name += s[i++];
+        if (!name) { const ch = s[i++]; return ch === ',' ? '&thinsp;' : esc(ch); }
+        if (name === 'texttt') return '<code>' + esc(raw()) + '</code>';
+        if (name === 'text' || name === 'mathrm') return '<span class="rm">' + esc(raw()) + '</span>';
+        if (name === 'tfrac' || name === 'frac') { const a = atom(), b = atom(); return a === '1' && b === '2' ? '½' : `<sup>${a}</sup>⁄<sub>${b}</sub>`; }
+        if (name === 'sqrt') return '√' + atom();
+        if (OPS.has(name)) return '<span class="rm">' + name + '</span>';
+        if (SYM[name]) return ' ' + SYM[name] + ' ';
+        if (PLAIN[name]) return PLAIN[name];
+        return esc(name);
+      }
+      i++;
+      if (c === '_' || c === '^') { const a = atom(); return c === '_' ? `<sub>${a}</sub>` : `<sup>${a}</sup>`; }
+      if (c === ' ') return '';
+      if (/[a-zA-Z]/.test(c)) return `<i>${c}</i>`;
+      if (c === '<') return ' &lt; ';
+      if (c === '>') return ' &gt; ';
+      if (c === '=' || c === '+') return ` ${c} `;
+      if (c === '-') return ' − ';
+      if (c === ',') return ', ';
+      return esc(c);
+    }
+    let out = '';
+    while (i < s.length) out += atom();
+    return '<span class="math">' + out.replace(/\s{2,}/g, ' ').trim() + '</span>';
+  }
+  const rich = html => String(html || '').split('$').map((p, k) => (k % 2 ? tex(p) : p)).join('');
+
+  let key = '', who = '';
+  try { key = sessionStorage.getItem('crm') || ''; who = localStorage.getItem('crmName') || ''; } catch {}
+  $('mname').value = who;
+  async function call(q, body) {
+    const r = await fetch('/api/mark?' + q, body ? { method: 'POST', headers: { 'x-marker-key': key, 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : { headers: { 'x-marker-key': key } });
+    const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'Error'); return j;
+  }
+  let problem = null, cur = null;
+  async function overview() {
+    try {
+      const d = await call('action=overview');
+      $('err').textContent = ''; $('overview').hidden = false; $('marking').hidden = true;
+      $('ptitle').textContent = 'Problems to mark · ' + d.paperTitle;
+      $('cut').hidden = !d.isAdmin; $('minA').value = d.minA;
+      $('plist').innerHTML = d.problems.map(p => `<div class="prob"><div><b>Problem ${esc(p.id)}</b> <span class="fine">Section ${esc(p.section)} · ${p.marks} marks</span></div>
+        <div><div class="pbar"><i style="width:${p.total ? (100 * p.marked / p.total) : 0}%"></i></div><p class="fine">${p.marked} of ${p.total} marked</p></div>
+        <button class="btn ${p.marked < p.total ? 'primary' : ''}" type="button" data-p="${esc(p.id)}">${p.marked < p.total ? 'Mark' : 'Review'}</button></div>`).join('') || '<p class="fine">Nothing to mark yet.</p>';
+    } catch (e) { $('err').textContent = e.message; $('overview').hidden = true; }
+  }
+  $('kf').onsubmit = e => { e.preventDefault(); key = $('key').value || key; who = $('mname').value.trim(); try { sessionStorage.setItem('crm', key); localStorage.setItem('crmName', who); } catch {} overview(); };
+  $('cutSave').onclick = async () => { try { await call('action=cutoff', { min: $('minA').value }); $('cutMsg').textContent = 'Saved.'; overview(); } catch (e) { $('cutMsg').textContent = e.message; } };
+  $('plist').onclick = e => { const b = e.target.closest('[data-p]'); if (b) { problem = b.dataset.p; next(); } };
+  $('back').onclick = overview;
+  function show(d) {
+    cur = d; const p = d.problem;
+    $('overview').hidden = true; $('marking').hidden = false; $('merr').textContent = '';
+    $('mhead').textContent = `Problem ${p.id} · ${p.marks} marks`; $('mlabel').textContent = 'Script ' + d.label;
+    $('statement').innerHTML = rich(p.text || '') + (p.parts ? '<ol type="a">' + p.parts.map(pt => `<li>${rich(pt.text)} <span class="fine">[${pt.marks}]</span></li>`).join('') + '</ol>' : '') + (p.constraints ? `<p class="fine">Constraints: ${rich(p.constraints)}</p>` : '');
+    $('answers').innerHTML = '<h2>Student\'s answer</h2>' + Object.entries(d.answers).map(([k, v]) => `${p.parts ? `<b>(${esc(k.replace(p.id, ''))})</b>` : ''}<div class="ans-block ${v.trim() ? '' : 'empty'}">${v.trim() ? esc(v) : 'No answer'}</div>`).join('');
+    $('outof').textContent = `out of ${p.marks}`; $('score').max = p.marks;
+    $('scores').innerHTML = Array.from({ length: p.marks + 1 }, (_, i) => `<button class="btn" type="button" data-s="${i}">${i}</button>`).join('');
+    $('score').value = d.mark?.score ?? ''; $('comment').value = d.mark?.comment || '';
+    paint(); $('score').focus(); window.scrollTo(0, 0);
+    if (d.remaining != null) $('remain').textContent = `${d.remaining} left to mark for this problem`;
+    loadMine();
+  }
+  const paint = () => [...$('scores').children].forEach(b => b.classList.toggle('on', String($('score').value) === b.dataset.s));
+  $('scores').onclick = e => { const b = e.target.closest('[data-s]'); if (b) { $('score').value = b.dataset.s; paint(); } };
+  $('score').oninput = paint;
+  async function next() {
+    try {
+      const d = await call(`action=next&problem=${encodeURIComponent(problem)}&marker=${encodeURIComponent(who)}`);
+      if (d.done) { $('err').textContent = `Problem ${problem}: everything is marked or being marked by someone else.`; return overview(); }
+      show(d);
+    } catch (e) { $('err').textContent = e.message; }
+  }
+  $('save').onclick = async () => {
+    if ($('score').value === '') { $('merr').textContent = 'Choose a mark first.'; return; }
+    try { await call('action=save', { sid: cur.sid, problem: cur.problem.id, score: Number($('score').value), comment: $('comment').value, marker: who }); next(); }
+    catch (e) { $('merr').textContent = e.message; }
+  };
+  $('skip').onclick = async () => { try { await call('action=skip', { sid: cur.sid, problem: cur.problem.id }); next(); } catch (e) { $('merr').textContent = e.message; } };
+  document.addEventListener('keydown', e => { if (!$('marking').hidden && e.key === 'Enter' && e.target.id !== 'comment') { e.preventDefault(); $('save').click(); } });
+  async function loadMine() {
+    try {
+      const d = await call(`action=mine&problem=${encodeURIComponent(problem)}&marker=${encodeURIComponent(who)}`);
+      $('mine').innerHTML = d.rows.length ? `<table style="width:100%;border-collapse:collapse">${d.rows.map(r => `<tr><td class="mono">Script ${esc(r.label)}</td><td>${r.score}</td><td><button class="linkbtn" type="button" data-sid="${esc(r.sid)}">Re-open</button></td></tr>`).join('')}</table>` : '<p class="fine">None yet.</p>';
+    } catch {}
+  }
+  $('mine').onclick = async e => { const b = e.target.closest('[data-sid]'); if (!b) return; try { show(await call(`action=script&sid=${encodeURIComponent(b.dataset.sid)}&problem=${encodeURIComponent(problem)}`)); } catch (err) { $('merr').textContent = err.message; } };
+  if (key && who) overview();
+})();
+</script>
+</body>
+</html>

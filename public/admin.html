@@ -41,7 +41,17 @@
   <p class="err" id="err"></p>
   <div id="body" hidden>
     <div class="tiles" id="tiles"></div>
-    <div class="row" style="justify-content:space-between"><p class="fine" id="when" style="margin:0"></p><a class="btn" id="pvLink" href="/?preview" target="_blank">Preview the paper as a student</a></div>
+    <div class="row" style="justify-content:space-between"><p class="fine" id="when" style="margin:0"></p><div class="row"><a class="btn" id="pvLink" href="/?preview" target="_blank">Preview the paper as a student</a><a class="btn" href="/mark" target="_blank">Marking page</a></div></div>
+    <div class="panel">
+      <div class="row" style="justify-content:space-between"><h2>Ready for the contest?</h2><button class="btn" type="button" id="rdBtn">Check again</button></div>
+      <div id="ready"><p class="fine">Checking…</p></div>
+    </div>
+    <div class="panel">
+      <h2>Announcement to all students</h2>
+      <p class="fine" style="margin:0">For corrections during the contest, e.g. "Problem 13 (b): read £7 3s 2d as £7 3s 1d." It appears at the top of every student's page within about 2 minutes, and on the waiting screen.</p>
+      <textarea id="annText" class="t" rows="2" style="width:100%;font:inherit" maxlength="500" placeholder="Type the announcement"></textarea>
+      <div class="row"><button class="btn primary" type="button" id="annSend">Publish announcement</button><button class="btn" type="button" id="annClear">Remove announcement</button><span class="fine" id="annMsg"></span></div>
+    </div>
     <div class="panel">
       <h2>Find a student</h2>
       <form id="qf" class="row"><input class="t" id="q" placeholder="Name, school, county, candidate no. or code" style="flex:1 1 18rem"><button class="btn">Search</button></form>
@@ -60,6 +70,15 @@
       </form>
       <div id="created"></div>
     </div>
+    <div class="panel">
+      <h2>Students and codes</h2>
+      <p class="fine" style="margin:0">Import a spreadsheet saved as CSV with the columns <b>name, school, county, candidate_no</b> (and optionally <b>extra_minutes</b> for students with extra time). Each student gets a code, and you download the list with a ready-to-send SMS/email message for each.</p>
+      <div class="row">
+        <label class="btn" for="csvFile" style="cursor:pointer">Import students from CSV…</label><input type="file" id="csvFile" accept=".csv,text/csv" hidden>
+        <button class="btn" type="button" id="codesDl">Download all codes (CSV)</button>
+        <span class="fine" id="csvMsg"></span>
+      </div>
+    </div>
     <h2 style="margin:1rem 0 0;font-size:1.15rem">Contest content</h2>
     <div class="panel">
       <h2>Paper</h2>
@@ -70,6 +89,9 @@
         <span class="fine" id="texName">Use the usual KIO LaTeX template, with the marking scheme inside \ifanswers.</span>
       </div>
       <div id="texResult"></div>
+      <div class="row" id="ppRow"><span class="fine">In practice mode (demos and rehearsals), students get:</span>
+        <label><input type="radio" name="pp" value="sample"> the short sample paper (keeps the real paper secret)</label>
+        <label><input type="radio" name="pp" value="real"> the real paper</label><span class="fine" id="ppMsg"></span></div>
       <div class="row">
         <button class="btn" type="button" id="paperRevert">Go back to the built-in paper</button>
       </div>
@@ -100,6 +122,20 @@
     <div class="panel">
       <div class="row" style="justify-content:space-between"><h2>More than one device, IP or browser</h2><button class="btn" id="devBtn" type="button">Load</button></div>
       <div class="tw" id="devices"></div>
+    </div>
+    <div class="panel" style="border-color:var(--red)">
+      <h2>Safety tools</h2>
+      <p class="fine" style="margin:0">Use before the contest to remove demo and rehearsal data, and after results are final to erase activity records (data protection). Switched off from 30 minutes before the live contest until 4 hours after it ends.</p>
+      <div class="row">
+        <select class="t" id="rsScope">
+          <option value="activity">Clear test entries: answers, logs and marks (keep students and codes)</option>
+          <option value="students">Clear everything, including students and codes</option>
+          <option value="logs-only">After results are final: erase activity logs, IP and browser details only</option>
+        </select>
+        <input class="t" id="rsConfirm" placeholder="Type DELETE to confirm" style="width:14rem">
+        <button class="btn" type="button" id="rsBtn" style="border-color:var(--red);color:var(--red)">Clear</button>
+      </div>
+      <p class="fine" id="rsMsg"></p>
     </div>
   </div>
 </div>
@@ -153,6 +189,7 @@
       const t = ms => { const s = Math.round(ms / 1000); return `${s < 0 ? '-' : ''}${Math.floor(Math.abs(s) / 60)}:${String(Math.abs(s) % 60).padStart(2, '0')}`; };
       $('student').innerHTML = `
         <p><b>${esc(d.student.name)}</b> · ${esc(d.student.school || '')} · ${esc(d.student.county || '')} · <span class="mono">${esc(d.student.code)}</span></p>
+        <div class="row"><span class="fine">Extra time (minutes):</span><input class="t" id="xtMin" type="number" min="0" max="240" value="${Number(d.student.extra_minutes) || 0}" style="width:6rem"><button class="btn" type="button" id="xtSave" data-code="${esc(d.student.code)}">Save extra time</button><span class="fine" id="xtMsg"></span></div>
         <p class="fine">First join ${fmt(x.first_join_at)} · last sync ${fmt(x.last_sync_at)} · submitted ${fmt(x.submitted_at)} · ${d.batches} batches (${d.stale} from a replaced device)</p>
         <div class="chips">${Object.entries(d.counts).map(([k, v]) => `<span class="chip ${HOT.has(k) ? 'hot' : ''}">${esc(NAMES[k] || k)}: ${v}</span>`).join('')}</div>
         <div class="tw"><table><tr><th>Joined</th><th>Kind</th><th>IP</th><th>Browser</th></tr>${d.joins.map(j => `<tr><td>${fmt(j.at)}</td><td>${esc(j.kind)}</td><td class="mono">${esc(j.ip)}</td><td class="fine">${esc(j.ua)}</td></tr>`).join('')}</table></div>
@@ -181,6 +218,8 @@
         (p.source === 'uploaded' ? `Uploaded from <b>${esc(p.filename || 'a .tex file')}</b> on ${fmt(p.uploadedAt)}.` : 'This is the built-in paper from the GitHub repository.');
       $('paperRevert').hidden = p.source !== 'uploaded';
       $('insText').value = (d.instructions || []).join('\n');
+      document.querySelectorAll('input[name=pp]').forEach(r => { r.checked = r.value === (d.practicePaper || 'sample'); });
+      $('annText').value = d.announcement?.text || '';
       $('bEvent').value = d.brand.event || ''; $('bRound').value = d.brand.round || ''; $('bDetails').value = d.brand.details || '';
       $('logoList').innerHTML = d.logos.length ? d.logos.map((l, i) => `<div class="logo-item"><img src="/api/brand?logo=${encodeURIComponent(l.id)}" alt="${esc(l.alt)}"><span class="fine">${esc(l.alt || 'Logo')}</span>
         <div class="row">${i ? `<button class="btn" type="button" data-move="left" data-id="${l.id}" aria-label="Move left">←</button>` : ''}${i < d.logos.length - 1 ? `<button class="btn" type="button" data-move="right" data-id="${l.id}" aria-label="Move right">→</button>` : ''}<button class="btn" type="button" data-del="${l.id}">Remove</button></div></div>`).join('') : '<p class="fine">No logos uploaded yet.</p>';
@@ -240,8 +279,73 @@
       if (d || m) loadContent();
     } catch (err) { $('logoMsg').textContent = err.message; }
   };
+  // ---------- readiness, announcements, students, safety ----------
+  async function readiness() {
+    try {
+      const d = await get('action=readiness');
+      $('ready').innerHTML = `<table>${d.checks.map(c => `<tr><td style="width:1.6rem;font-weight:700;color:${c.ok === true ? 'var(--accent)' : c.ok === 'warn' ? 'var(--warn)' : 'var(--red)'}">${c.ok === true ? '✓' : c.ok === 'warn' ? '!' : '✗'}</td><td><b>${esc(c.label)}</b>${c.detail ? `<br><span class="fine">${esc(c.detail)}</span>` : ''}</td></tr>`).join('')}</table>`;
+    } catch (e) { $('ready').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  }
+  $('rdBtn').onclick = readiness;
+  $('annSend').onclick = async () => { try { await post('announce', { text: $('annText').value }); $('annMsg').textContent = $('annText').value.trim() ? 'Published. Students see it within about 2 minutes.' : 'Removed.'; readiness(); } catch (e) { $('annMsg').textContent = e.message; } };
+  $('annClear').onclick = async () => { $('annText').value = ''; $('annSend').onclick(); };
+  document.addEventListener('change', async e => {
+    if (e.target.name !== 'pp') return;
+    try { await post('practice-paper', { which: e.target.value }); $('ppMsg').textContent = e.target.value === 'real' ? 'Practice codes now open the REAL paper.' : 'Practice codes now open the sample paper.'; } catch (err) { $('ppMsg').textContent = err.message; }
+  });
+  $('student').addEventListener('click', async e => {
+    if (e.target.id !== 'xtSave') return;
+    try { const r = await post('extra-time', { code: e.target.dataset.code, minutes: $('xtMin').value }); $('xtMsg').textContent = `Saved: ${r.minutes} extra minutes. Applies the next time they enter or save.`; } catch (err) { $('xtMsg').textContent = err.message; }
+  });
+  // CSV import (simple parser: quoted fields, commas, new lines)
+  function parseCSV(text) {
+    const rows = []; let row = [], f = '', q = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (q) { if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+      else if (c === '"') q = true; else if (c === ',') { row.push(f); f = ''; }
+      else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(f); f = ''; if (row.some(x => x.trim())) rows.push(row); row = []; }
+      else f += c;
+    }
+    row.push(f); if (row.some(x => x.trim())) rows.push(row);
+    const head = (rows.shift() || []).map(h => h.trim().toLowerCase().replace(/^\ufeff/, '').replace(/[^a-z_]/g, '_'));
+    return rows.map(r => Object.fromEntries(head.map((h, i) => [h, (r[i] || '').trim()])));
+  }
+  const csvCell = v => { const t = v == null ? '' : String(v); return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+  function download(name, rows, cols) {
+    const text = '\ufeff' + [cols.join(','), ...rows.map(r => cols.map(c => csvCell(r[c])).join(','))].join('\r\n');
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([text], { type: 'text/csv' })), download: name });
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+  let contestStart = null;
+  const message = (r) => `${r.name}: your Kenya Informatics Olympiad contest code is ${r.pretty || r.code}. Go to ${location.origin}${contestStart ? ' on ' + new Date(contestStart).toLocaleString('en-GB', { timeZone: 'Africa/Nairobi', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' EAT' : ''} and enter the code. Keep it private.`;
+  $('csvFile').onchange = async () => {
+    const f = $('csvFile').files[0]; if (!f) return;
+    const rows = parseCSV(await f.text()).filter(r => r.name);
+    if (!rows.length) { $('csvMsg').textContent = 'No rows with a "name" column found. Check the first row has the column names.'; return; }
+    const created = [];
+    try {
+      for (let i = 0; i < rows.length; i += 500) {
+        $('csvMsg').textContent = `Creating codes… ${i} of ${rows.length}`;
+        const r = await post('import', { rows: rows.slice(i, i + 500) }); created.push(...r.created);
+      }
+      const d = await get('action=codes'); contestStart = d.mode === 'live' ? d.start : null;
+      download(`codes-new-${new Date().toISOString().slice(0, 10)}.csv`, created.map(r => ({ ...r, message: message({ ...r, pretty: r.code }) })), ['code', 'name', 'school', 'county', 'candidate_no', 'extra_minutes', 'message']);
+      $('csvMsg').textContent = `Created ${created.length} codes. The file with the new codes has been downloaded.`; $('csvFile').value = ''; stats();
+    } catch (e) { $('csvMsg').textContent = `Stopped after ${created.length} codes: ${e.message}`; }
+  };
+  $('codesDl').onclick = async () => {
+    try {
+      const d = await get('action=codes'); contestStart = d.mode === 'live' ? d.start : null;
+      download(`all-codes-${new Date().toISOString().slice(0, 10)}.csv`, d.rows.map(r => ({ ...r, code: r.pretty, entered: r.first_join_at ? 'yes' : '', submitted: r.submitted_at ? 'yes' : '', message: message(r) })), ['code', 'name', 'school', 'county', 'candidate_no', 'extra_minutes', 'entered', 'submitted', 'message']);
+    } catch (e) { $('csvMsg').textContent = e.message; }
+  };
+  $('rsBtn').onclick = async () => {
+    try { const r = await post('reset', { scope: $('rsScope').value, confirm: $('rsConfirm').value.trim() }); $('rsMsg').textContent = r.cleared; $('rsConfirm').value = ''; stats(); readiness(); }
+    catch (e) { $('rsMsg').textContent = e.message; }
+  };
   const _stats = stats;
-  stats = async () => { await _stats(); if (!$('body').hidden && !loadContent.done) { loadContent.done = true; loadContent(); } };
+  stats = async () => { await _stats(); if (!$('body').hidden && !loadContent.done) { loadContent.done = true; loadContent(); readiness(); } };
   if (key) stats();
   setInterval(() => { if (key && !document.hidden) stats(); }, 30000);
 })();

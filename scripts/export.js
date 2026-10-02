@@ -1,18 +1,20 @@
 // Downloads everything to ./out:
+//   results.csv   one row per student: Section A score, marks per written problem, total and rank
 //   answers.csv   one row per student: details, times, every answer, Section A score
 //   activity.csv  one row per student: counts of each logged behaviour (for spotting anomalies)
 //   joins.csv     every join with IP and browser
 //   events.jsonl  full decoded activity log, one event per line (t = ms since contest start)
 import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { db, config } from '../lib/server.js';
-import { activePaper } from '../lib/store.js';
+import { servedPaper, ensureTables } from '../lib/store.js';
 import { toCSV } from './csv.js';
 
 const sql = db();
 const cfg = config();
 mkdirSync('out', { recursive: true });
 const iso = d => (d ? new Date(d).toISOString() : '');
-const AP = await activePaper(sql);
+await ensureTables(sql);
+const AP = await servedPaper(sql, cfg);
 const MCQ_KEY = AP.key || {}, MCQ_POINTS = AP.points || {};
 const keys = [...AP.answerKeys];
 
@@ -26,6 +28,20 @@ const answers = rows.map(r => {
     joins: r.join_count ?? 0, section_a_score: r.first_join_at ? score : '', ...Object.fromEntries(keys.map(k => [k, a[k] ?? ''])) };
 });
 writeFileSync('out/answers.csv', toCSV(['code', 'name', 'school', 'county', 'candidate_no', 'first_join', 'last_sync', 'submitted', 'joins', 'section_a_score', ...keys], answers));
+
+// Results: Section A (automatic) + marks entered on the marking page
+const markable = AP.paper.sections.flatMap(x => x.problems).filter(p => p.type !== 'mcq').map(p => p.id);
+const marks = await sql`select code, problem, score from marks where score is not null`;
+const byCode = new Map();
+for (const m of marks) { if (!byCode.has(m.code)) byCode.set(m.code, {}); byCode.get(m.code)[m.problem] = Number(m.score); }
+const results = answers.filter(a => a.first_join).map(a => {
+  const m = byCode.get(a.code) || {};
+  const written = markable.reduce((t, p) => t + (m[p] ?? 0), 0);
+  return { code: a.code, name: a.name, school: a.school, county: a.county, candidate_no: a.candidate_no, section_a: a.section_a_score,
+    ...Object.fromEntries(markable.map(p => ['p' + p, m[p] ?? ''])), problems_marked: Object.keys(m).length, total: Number(a.section_a_score || 0) + written };
+}).sort((x, y) => y.total - x.total);
+results.forEach((r, i) => { r.rank = i && results[i - 1].total === r.total ? results[i - 1].rank : i + 1; });
+writeFileSync('out/results.csv', toCSV(['rank', 'total', 'code', 'name', 'school', 'county', 'candidate_no', 'section_a', ...markable.map(p => 'p' + p), 'problems_marked'], results));
 
 const joins = await sql`select code, at, kind, ip, ua from joins order by code, at`;
 writeFileSync('out/joins.csv', toCSV(['code', 'at', 'kind', 'ip', 'ua'], joins.map(j => ({ ...j, at: iso(j.at) }))));
@@ -59,5 +75,5 @@ await sql`select code, seq, received_at, base, stale, late, final, answers, even
   });
 ev.end();
 writeFileSync('out/activity.csv', toCSV(['code', 'batches', 'stale_batches', 'away_ms', 'max_gap_ms', ...TYPES], [...act.values()]));
-console.log(`Exported ${answers.length} students, ${joins.length} joins, ${n} events to ./out (contest ${iso(cfg.start)} to ${iso(cfg.end)})`);
+console.log(`Exported ${answers.length} students (${results.length} took part, results.csv ranked), ${joins.length} joins, ${n} events to ./out (contest ${iso(cfg.start)} to ${iso(cfg.end)})`);
 await sql.end();

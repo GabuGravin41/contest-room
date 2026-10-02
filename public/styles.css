@@ -100,6 +100,7 @@ code { font-family: var(--mono); font-size: .92em; background: var(--accent-soft
 .timer { font-family: var(--mono); font-size: 1.35rem; font-weight: 500; font-variant-numeric: tabular-nums; padding: .15rem .6rem; border-radius: 6px; letter-spacing: .02em; }
 .timer.warn { background: var(--warn-soft); color: var(--warn); }
 .timer.crit { background: var(--crit-soft); color: var(--red); }
+.banner.ann { background: var(--accent-soft); color: var(--ink); justify-content: flex-start; }
 .banner { padding: .55rem 16px; background: var(--warn-soft); color: var(--warn); font-size: .9rem; display: flex; gap: 1rem; align-items: center; justify-content: center; flex-wrap: wrap; }
 
 .layout { display: grid; grid-template-columns: 15.5rem 1fr; min-height: 0; }
@@ -149,9 +150,9 @@ details.ref td:nth-child(2) { padding-right: 1.6rem; }
 .opt:hover { border-color: var(--muted); }
 .opt input { position: absolute; opacity: 0; pointer-events: none; }
 .opt .letter { flex: none; width: 1.9rem; height: 1.9rem; border-radius: 50%; border: 1px solid var(--line); display: grid; place-items: center; font-family: var(--sans); font-weight: 600; font-size: .9rem; }
-.opt:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
-.opt:has(input:checked) .letter { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-.opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.opt.sel { border-color: var(--accent); background: var(--accent-soft); }   /* class set by app.js, works in every browser */
+.opt.sel .letter { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.opt:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 .opts.locked .opt { cursor: default; }
 
 .part { display: grid; gap: .5rem; }
@@ -201,3 +202,7 @@ textarea.ans:disabled { opacity: .75; }
 .logos img { height: 52px; width: auto; max-width: 100%; object-fit: contain; }
 .logos.small img { height: 28px; }
 .logos.small { gap: .5rem; }
+
+/* form fields on the admin and marking pages */
+textarea.t, select.t { border: 1px solid var(--line); border-radius: 6px; padding: .5rem .7rem; background: var(--bg); color: var(--ink); }
+textarea.t:focus, select.t:focus, input.t:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
